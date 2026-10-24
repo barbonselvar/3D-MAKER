@@ -217,6 +217,39 @@ class Worker:
         }
 
 
+class _PrintReporter:
+    def stage(self, status, stage, progress=None):
+        print(f'[smoke] {status:<15} {stage}', flush=True)
+
+    def check_cancel(self):
+        pass
+
+
+def smoke(engines: dict[str, Engine], probe: dict, image_path: str, out_dir: str, params: dict | None = None) -> bool:
+    """Run each engine once on a fixture image, validate, and write GLB + manifest + report to out_dir."""
+    from pathlib import Path  # noqa: PLC0415
+
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    data = Path(image_path).read_bytes()
+    params = {'seed': 1, 'resolution': 1024, 'texture_size': 2048, 'face_budget': 200_000} | (params or {})
+    ok = True
+    for engine in engines.values():
+        started = time.monotonic()
+        result = engine.run(Image.open(BytesIO(data)), params, _PrintReporter())
+        report = validate_glb(result.glb, face_budget=params['face_budget'], texture_size=params['texture_size'],
+                              require_pbr=engine.textured)
+        job = {'id': 'smoke', 'params': params, 'input': {'sha256': hashlib.sha256(data).hexdigest()}}
+        manifest = Worker(None, engines, probe).manifest(job, engine, result, report, {}, time.monotonic() - started)
+        (out / f'{engine.id}.glb').write_bytes(result.glb)
+        (out / f'{engine.id}.manifest.json').write_text(json.dumps(manifest, indent=2))
+        print(f'[smoke] {engine.id}: {len(result.glb)} bytes, validation {"PASSED" if report.passed else "FAILED"}')
+        for gate in report.gates:
+            print(f'[smoke]   {gate.id} {gate.status:<7} {gate.message}')
+        ok = ok and report.passed
+    return ok
+
+
 def main() -> None:
     import argparse
 
@@ -226,6 +259,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description='3D Maker internal GPU worker')
     ap.add_argument('--engines', default=os.environ.get('WORKER_ENGINES', 'trellis2-4b'))
     ap.add_argument('--probe-only', action='store_true', help='print the capability probe and exit')
+    ap.add_argument('--smoke', action='store_true', help='generate one GLB from a fixture image, validate it, exit')
+    ap.add_argument('--smoke-input', default=os.path.join(os.path.dirname(__file__), 'smoke', 'sphere.png'))
+    ap.add_argument('--smoke-out', default='/out')
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}')
     caps = probe()
@@ -235,6 +271,8 @@ def main() -> None:
     engines = load_engines([e.strip() for e in args.engines.split(',') if e.strip()])
     for engine in engines.values():
         engine.load()
+    if args.smoke:
+        raise SystemExit(0 if smoke(engines, caps, args.smoke_input, args.smoke_out) else 1)
     http = httpx.Client(base_url=os.environ['MAKER_INTERNAL_URL'], timeout=120,
                         headers={'Authorization': f"Bearer {os.environ['MAKER_WORKER_TOKEN']}"})
     Worker(ApiClient(http), engines, caps).run_forever()

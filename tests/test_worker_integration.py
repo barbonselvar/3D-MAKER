@@ -175,3 +175,13 @@ def test_stub_engine_cannot_be_loaded_in_production():
         engine_registry.load_engines(['stub'])
     production_sources = [p.read_text() for p in Path('worker').rglob('*.py')] + [p.read_text() for p in Path('app').rglob('*.py')]
     assert not any('stub_engine' in src or 'from tests' in src for src in production_sources)
+
+
+def test_smoke_mode_writes_validated_glb_and_manifest(tmp_path):
+    from worker.main import smoke
+
+    engines = {'trellis2-4b': StubEngine()}
+    assert not smoke(engines, L40S_PROBE, 'worker/smoke/sphere.png', str(tmp_path))  # 2048 px requested, fixture is 1024
+    assert smoke(engines, L40S_PROBE, 'worker/smoke/sphere.png', str(tmp_path), {'texture_size': 1024})
+    assert (tmp_path / 'trellis2-4b.glb').read_bytes()[:4] == b'glTF'
+    assert '"passed": true' in (tmp_path / 'trellis2-4b.manifest.json').read_text()

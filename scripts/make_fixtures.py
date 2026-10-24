@@ -116,6 +116,21 @@ def crafted_fixtures() -> dict[str, bytes]:
     }
 
 
+def smoke_subject() -> bytes:
+    """Shaded sphere on transparency: a simple, unambiguous input for the GPU smoke run."""
+    n = 512
+    y, x = (np.mgrid[0:n, 0:n] - n / 2 + 0.5) / (n * 0.4)
+    r2 = x**2 + y**2
+    inside = r2 <= 1
+    z = np.sqrt(np.clip(1 - r2, 0, 1))
+    light = np.clip(0.25 + 0.75 * (z * 0.8 - x * 0.3 - y * 0.5), 0, 1)
+    rgb = (np.stack([0.85 * light, 0.25 * light, 0.2 * light], -1) * 255).astype('uint8')
+    alpha = (inside * 255).astype('uint8')
+    buf = io.BytesIO()
+    Image.fromarray(np.dstack([rgb, alpha])).save(buf, 'PNG')
+    return buf.getvalue()
+
+
 def glb_json(data: bytes) -> dict:
     length = struct.unpack_from('<I', data, 12)[0]
     return json.loads(data[20:20 + length])
@@ -128,6 +143,9 @@ def main():
     assert doc['materials'][0]['pbrMetallicRoughness'].get('baseColorTexture'), 'texture missing'
     (OUT / 'textured_cube.glb').write_bytes(cube)
     print('wrote textured_cube.glb', len(cube), 'bytes')
+    smoke = OUT.parents[1] / 'worker' / 'smoke' / 'sphere.png'
+    smoke.write_bytes(smoke_subject())
+    print('wrote', smoke.relative_to(OUT.parents[1]))
     for name, data in crafted_fixtures().items():
         (OUT / name).write_bytes(data)
         print('wrote', name, len(data), 'bytes')

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from ..core import clock
 from ..core.context import Context, ctx, current_owner
 from ..core.db import loads
-from ..core.engines import eligible
+from ..core.engines import STATUS_LABELS, statuses
 
 router = APIRouter(prefix='/api/v1')
 
@@ -12,7 +12,8 @@ router = APIRouter(prefix='/api/v1')
 def internal_target(c: Context) -> dict:
     """Internal GPU = the best online worker (fresh heartbeat) by usable VRAM."""
     target = {'id': 'internal', 'kind': 'internal', 'configured': True, 'available': False, 'reason': None,
-              'device': None, 'backend': None, 'engines': [], 'requires_consent': False, 'price_estimate_usd': None}
+              'device': None, 'backend': None, 'engines': [], 'engine_status': [], 'os': None,
+              'requires_consent': False, 'price_estimate_usd': None}
     with c.db.connect() as conn:
         rows = conn.execute("SELECT * FROM workers WHERE kind='internal' AND heartbeat_at >= ?",
                             (clock.now() - c.settings.heartbeat_fresh,)).fetchall()
@@ -22,20 +23,30 @@ def internal_target(c: Context) -> dict:
     best = None
     for row in rows:
         probe, installed = loads(row['probe']) or {}, loads(row['engines']) or []
-        fits, reasons = eligible(probe, installed)
+        engine_status = statuses(probe, installed)
+        ready = [s for s in engine_status if s['status'] == 'ready']
         vram = max((d.get('vram_free_mb') or 0 for d in probe.get('devices') or []), default=0)
-        score = (bool(fits), vram)
+        score = (bool(ready), vram)
         if best is None or score > best[0]:
-            best = (score, row, probe, fits, reasons)
-    _, row, probe, fits, reasons = best
+            best = (score, probe, engine_status, ready)
+    _, probe, engine_status, ready = best
     devices = probe.get('devices') or []
     target['backend'] = probe.get('backend')
+    target['os'] = probe.get('os')
     target['device'] = max(devices, key=lambda d: d.get('vram_free_mb') or 0) if devices else None
-    target['engines'] = [{'id': e.id, 'label': e.label, 'quality': e.quality, 'textured': e.textured,
-                          'est_seconds': None} for e in fits]
-    target['available'] = bool(fits)
-    if not fits:
-        target['reason'] = ' '.join(reasons) or 'No image-to-3D engine is installed on the online worker.'
+    target['engine_status'] = [s | {'status_label': STATUS_LABELS[s['status']]} for s in engine_status]
+    # est_seconds comes only from a measured self-test on this machine, never from a guess.
+    target['engines'] = [{'id': s['id'], 'label': s['label'], 'quality': s['quality'], 'textured': s['textured'],
+                          'max_texture_size': s['max_texture_size'], 'est_seconds': s['seconds']} for s in ready]
+    target['available'] = bool(ready)
+    if not ready:
+        # Explain the engines that are present first; list "not installed" only when nothing else is.
+        present = [s for s in engine_status if s['status'] != 'not_installed']
+        if not present and probe.get('engine_reports') is None:
+            target['reason'] = 'No image-to-3D engine is installed on the online worker.'
+        else:
+            target['reason'] = ' '.join(f"{s['label']}: {STATUS_LABELS[s['status']]}. {s['reason']}"
+                                        for s in (present or engine_status))
     return target
 
 

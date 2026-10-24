@@ -167,3 +167,21 @@ def test_sse_resumes_after_last_event_id(api):
 def test_legacy_validation_errors_unchanged(api):
     r = api.post('/api/generate')
     assert r.status_code == 422 and 'detail' in r.json()
+
+
+def test_job_refuses_texture_larger_than_selftest(api):
+    probe = {'backend': 'cuda', 'devices': [{'name': 'RTX 4050 Laptop', 'vram_total_mb': 6141, 'vram_free_mb': 5000}],
+             'engine_reports': {'sf3d': {'installed': True, 'selftest': {'status': 'passed', 'max_texture_size': 512}}}}
+    online_worker(api, probe=probe, engines=('sf3d',))
+    u = upload(api)
+    r = create_job(api, u, engine='sf3d', params={'texture_size': 1024})
+    assert r.status_code == 409 and err(r) == 'TEXTURE_TOO_LARGE' and 'up to 512 px' in r.json()['error']['message']
+    assert create_job(api, u, engine='sf3d', params={'texture_size': 512}).status_code == 202
+
+
+def test_unready_engine_reason_reaches_the_client(api):
+    probe = {'backend': 'cuda', 'devices': [{'name': 'RTX 4050 Laptop', 'vram_total_mb': 6141, 'vram_free_mb': 5000}],
+             'engine_reports': {'sf3d': {'installed': True, 'selftest': {'status': 'passed', 'max_texture_size': 1024}}}}
+    online_worker(api, probe=probe, engines=('sf3d',))
+    r = create_job(api, upload(api), engine='trellis2-4b')
+    assert r.status_code == 409 and 'Unsupported' in r.json()['error']['message']

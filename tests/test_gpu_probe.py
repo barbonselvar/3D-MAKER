@@ -105,7 +105,7 @@ def test_eligibility_48gb_prefers_trellis2():
 
 def test_eligibility_12gb_explains_trellis2_refusal():
     probe = probe_for('rtx3060_12gb.txt')
-    assert check(ENGINES['trellis2-4b'], probe, ALL) == 'GPU has 11 GB free; TRELLIS.2-4B needs 24 GB.'
+    assert check(ENGINES['trellis2-4b'], probe, ALL) == 'GPU has 12 GB; TRELLIS.2-4B needs at least 24 GB.'
     fits, _ = eligible(probe, ALL)
     assert [e.id for e in fits] == ['hunyuan3d-2.1-shape', 'sf3d']
 
@@ -158,7 +158,7 @@ def test_targets_with_12gb_worker_explains(api):
     add_worker(api, 'w1', probe_for('rtx3060_12gb.txt'), ['trellis2-4b'])
     internal = targets(api)['internal']
     assert internal['available'] is False
-    assert internal['reason'] == 'GPU has 11 GB free; TRELLIS.2-4B needs 24 GB.'
+    assert internal['reason'] == 'TRELLIS.2-4B: Unsupported. GPU has 12 GB; TRELLIS.2-4B needs at least 24 GB.'
 
 
 def test_stale_worker_ignored(api):
@@ -205,3 +205,76 @@ def test_nvidia_smi_found_in_windows_locations(monkeypatch):
 def test_parse_driver_cuda():
     assert gpu_probe.parse_driver_cuda((FIX / 'banner_win_cuda127.txt').read_text()) == '12.7'
     assert gpu_probe.parse_driver_cuda('no banner') is None
+
+
+# --- per-machine engine statuses (self-test reports from the worker) -------------------------------
+
+from app.core.engines import STATUS_LABELS, statuses  # noqa: E402
+
+RTX4050 = {'backend': 'cuda', 'devices': [{'name': 'NVIDIA GeForce RTX 4050 Laptop GPU', 'vram_total_mb': 6141,
+                                           'vram_free_mb': 5329, 'driver': '566.36'}]}
+
+
+def with_reports(**reports):
+    return RTX4050 | {'engine_reports': reports}
+
+
+def by_id(probe, installed):
+    return {s['id']: s for s in statuses(probe, installed)}
+
+
+def test_status_labels_cover_required_states():
+    assert {'ready', 'unsupported', 'out_of_memory', 'not_installed'} <= set(STATUS_LABELS)
+
+
+def test_rtx4050_trellis_unsupported_even_if_installed():
+    s = by_id(with_reports(**{'trellis2-4b': {'installed': True}}), ['trellis2-4b'])['trellis2-4b']
+    assert s['status'] == 'unsupported' and 'needs at least 24 GB' in s['reason']
+
+
+def test_sf3d_not_installed():
+    s = by_id(with_reports(sf3d={'installed': False, 'problem': 'texture_baker was built without CUDA.'}), [])['sf3d']
+    assert (s['status'], s['reason']) == ('not_installed', 'texture_baker was built without CUDA.')
+
+
+def test_sf3d_untested_until_selftest_reports():
+    s = by_id(with_reports(sf3d={'installed': True, 'selftest': None}), ['sf3d'])['sf3d']
+    assert s['status'] == 'untested'
+
+
+def test_sf3d_ready_after_passing_selftest():
+    test = {'status': 'passed', 'max_texture_size': 512, 'peak_vram_mb': 4870, 'seconds': 9.5}
+    s = by_id(with_reports(sf3d={'installed': True, 'selftest': test}), ['sf3d'])['sf3d']
+    assert s['status'] == 'ready' and s['max_texture_size'] == 512 and s['peak_vram_mb'] == 4870
+
+
+def test_sf3d_out_of_memory():
+    test = {'status': 'out_of_memory', 'message': 'Out of GPU memory at 512 px.'}
+    s = by_id(with_reports(sf3d={'installed': True, 'selftest': test}), ['sf3d'])['sf3d']
+    assert (s['status'], s['reason']) == ('out_of_memory', 'Out of GPU memory at 512 px.')
+
+
+def test_sf3d_has_no_assumed_vram_threshold():
+    tiny = {'backend': 'cuda', 'devices': [{'name': 'x', 'vram_total_mb': 2048, 'vram_free_mb': 2000}],
+            'engine_reports': {'sf3d': {'installed': True, 'selftest': None}}}
+    assert by_id(tiny, ['sf3d'])['sf3d']['status'] == 'untested'  # the real self-test decides
+
+
+def test_targets_report_engine_statuses_for_rtx4050(api):
+    test = {'status': 'passed', 'max_texture_size': 1024, 'peak_vram_mb': 5200, 'seconds': 12.0}
+    probe = with_reports(sf3d={'installed': True, 'selftest': test}, **{'trellis2-4b': {'installed': False}})
+    add_worker(api, 'w1', probe, ['sf3d'])
+    internal = targets(api)['internal']
+    assert internal['available'] is True
+    assert internal['engines'] == [{'id': 'sf3d', 'label': 'Stable Fast 3D', 'quality': 'preview', 'textured': True,
+                                    'max_texture_size': 1024, 'est_seconds': 12.0}]
+    st = {s['id']: (s['status'], s['status_label']) for s in internal['engine_status']}
+    assert st['trellis2-4b'] == ('unsupported', 'Unsupported') and st['sf3d'] == ('ready', 'Ready')
+
+
+def test_targets_explain_out_of_memory(api):
+    probe = with_reports(sf3d={'installed': True, 'selftest': {'status': 'out_of_memory', 'message': 'OOM at 512 px.'}})
+    add_worker(api, 'w1', probe, ['sf3d'])
+    internal = targets(api)['internal']
+    assert internal['available'] is False
+    assert 'Stable Fast 3D: Out of memory. OOM at 512 px.' in internal['reason']

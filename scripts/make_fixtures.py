@@ -167,6 +167,8 @@ def main():
     smoke = OUT.parents[1] / 'worker' / 'smoke' / 'sphere.png'
     smoke.write_bytes(smoke_subject())
     print('wrote', smoke.relative_to(OUT.parents[1]))
+    on_white = Image.alpha_composite(Image.new('RGBA', (512, 512), (255, 255, 255, 255)), Image.open(smoke).convert('RGBA'))
+    on_white.convert('RGB').save(smoke.with_name('sphere_on_white.png'))  # self-test input: no alpha
     for name, data in crafted_fixtures().items():
         (OUT / name).write_bytes(data)
         print('wrote', name, len(data), 'bytes')

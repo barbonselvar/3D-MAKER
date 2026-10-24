@@ -17,6 +17,7 @@ import platform
 import threading
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
 from io import BytesIO
 
 import httpx
@@ -25,6 +26,7 @@ from PIL import Image
 from app.core.engines import ENGINES
 
 from .engines.base import Cancelled, Engine, EngineError
+from .selftest import SelfTestStore, ensure_selftest, fingerprint, step_down
 from .validate import validate_glb
 
 log = logging.getLogger('maker.worker')
@@ -118,13 +120,72 @@ class JobReporter:
 
 class Worker:
     def __init__(self, api: ApiClient, engines: dict[str, Engine], probe: dict,
-                 validator: Callable = validate_glb, heartbeat_interval: float = 15, poll_interval: float = 3):
-        self.api, self.engines, self.probe, self.validator = api, engines, probe, validator
+                 validator: Callable = validate_glb, heartbeat_interval: float = 15, poll_interval: float = 3,
+                 reports: dict | None = None, store: SelfTestStore | None = None):
+        self.api, self.engines, self._probe, self.validator = api, engines, probe, validator
         self.heartbeat_interval, self.poll_interval = heartbeat_interval, poll_interval
+        # Per-engine install/self-test reports (None: legacy worker without self-tests, e.g. the TRELLIS.2 image).
+        self.reports, self.store = reports, store
+
+    @property
+    def probe(self) -> dict:
+        """What the API sees: the hardware probe plus, when self-tests are used, each engine's report."""
+        return self._probe if self.reports is None else self._probe | {'engine_reports': self.reports}
 
     @property
     def engine_ids(self) -> list[str]:
+        """Engines loaded on this worker (installed)."""
         return list(self.engines)
+
+    @property
+    def ready_engine_ids(self) -> list[str]:
+        """Engines this worker may claim jobs for: all loaded ones, or only those that passed the self-test."""
+        if self.reports is None:
+            return self.engine_ids
+        return [e for e in self.engines if ((self.reports.get(e) or {}).get('selftest') or {}).get('status') == 'passed']
+
+    @contextmanager
+    def background_heartbeat(self):
+        """Keep the worker 'online' (with its current reports) during long startup work such as self-tests."""
+        done = threading.Event()
+
+        def loop():
+            while True:
+                try:
+                    self.api.heartbeat(self.probe, self.engine_ids)
+                except httpx.HTTPError as e:
+                    log.warning('heartbeat failed: %s', e)
+                if done.wait(self.heartbeat_interval):
+                    return
+
+        thread = threading.Thread(target=loop, daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            done.set()
+            thread.join(timeout=2)
+
+    def run_selftests(self, force: bool = False, log_fn: Callable[[str], None] = print) -> None:
+        for engine_id, engine in self.engines.items():
+            if self.reports is None or engine_id not in self.reports:
+                continue
+            self.reports[engine_id]['selftest'] = ensure_selftest(
+                engine, self._probe, self.store or SelfTestStore(), self.validator, material_profile(engine),
+                force=force, log=log_fn)
+
+    def _out_of_memory(self, engine_id: str, texture: int) -> None:
+        """A real job ran out of GPU memory: step the engine down its self-test ladder and remember it."""
+        report = (self.reports or {}).get(engine_id)
+        if not report or not report.get('selftest'):
+            return
+        engine = self.engines[engine_id]
+        result = step_down(engine, report['selftest'], texture)
+        report['selftest'] = result
+        if result.get('low_vram') is not None:
+            engine.set_memory_mode(bool(result['low_vram']))
+        (self.store or SelfTestStore()).put(engine_id, fingerprint(engine, self._probe), result)
+        log.warning('%s: %s', engine_id, result['message'])
 
     def run_forever(self, stop: threading.Event | None = None) -> None:
         stop = stop or threading.Event()
@@ -139,7 +200,7 @@ class Worker:
     def run_once(self) -> bool:
         """Heartbeat, claim at most one job and process it. Returns True if a job was processed."""
         self.api.heartbeat(self.probe, self.engine_ids)
-        job = self.api.claim(self.engine_ids)
+        job = self.api.claim(self.ready_engine_ids)
         if job is None:
             return False
         self.process(job)
@@ -186,6 +247,8 @@ class Worker:
             log.info('job %s cancelled', job_id)
         except EngineError as e:
             log.warning('job %s failed: %s %s', job_id, e.code, e.message)
+            if e.code == 'INFERENCE_OOM':
+                self._out_of_memory(job['engine'], params['texture_size'])
             self._fail(job_id, e.code, e.message, e.retryable)
         except Exception as e:  # noqa: BLE001 - never leave a job hanging; report and continue
             log.exception('job %s crashed', job_id)
@@ -256,10 +319,37 @@ def smoke(engines: dict[str, Engine], probe: dict, image_path: str, out_dir: str
     return ok
 
 
+def prepare_engines(requested: list[str], classes: dict | None = None) -> tuple[dict[str, Engine], dict]:
+    """Check, then load, each requested engine. Missing pieces become 'Not installed' reports, never crashes."""
+    from .engines import PRODUCTION_ENGINES, engine_class  # noqa: PLC0415
+
+    loaded, reports = {}, {}
+    for engine_id in requested:
+        if classes is None and engine_id not in PRODUCTION_ENGINES:
+            reports[engine_id] = {'installed': False, 'problem': f'Unknown engine {engine_id!r}.', 'selftest': None}
+            continue
+        cls = (classes or {}).get(engine_id) or engine_class(engine_id)
+        problem = cls.install_problem()
+        if problem:
+            log.warning('%s not installed: %s', engine_id, problem)
+            reports[engine_id] = {'installed': False, 'problem': problem, 'selftest': None}
+            continue
+        engine = cls()
+        try:
+            engine.load()
+        except Exception as e:  # noqa: BLE001 - surface the reason in the UI instead of crashing
+            log.exception('%s failed to load', engine_id)
+            reports[engine_id] = {'installed': False, 'problem': f'Loading failed: {type(e).__name__}: {str(e)[:300]}',
+                                  'selftest': None}
+            continue
+        loaded[engine_id] = engine
+        reports[engine_id] = {'installed': True, 'problem': None, 'selftest': None}
+    return loaded, reports
+
+
 def main() -> None:
     import argparse
 
-    from .engines import load_engines
     from .gpu_probe import probe
 
     ap = argparse.ArgumentParser(description='3D Maker internal GPU worker')
@@ -267,21 +357,30 @@ def main() -> None:
     ap.add_argument('--probe-only', action='store_true', help='print the capability probe and exit')
     ap.add_argument('--smoke', action='store_true', help='generate one GLB from a fixture image, validate it, exit')
     ap.add_argument('--smoke-input', default=os.path.join(os.path.dirname(__file__), 'smoke', 'sphere.png'))
-    ap.add_argument('--smoke-out', default='/out')
+    ap.add_argument('--smoke-out', default='/out' if os.path.isdir('/out') else 'out')  # /out: Docker volume
+    ap.add_argument('--selftest', action='store_true', help='re-run the GPU self-test, print the results and exit')
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}')
     caps = probe()
     if args.probe_only:
         print(json.dumps(caps, indent=2))
         return
-    engines = load_engines([e.strip() for e in args.engines.split(',') if e.strip()])
-    for engine in engines.values():
-        engine.load()
+    engines, reports = prepare_engines([e.strip() for e in args.engines.split(',') if e.strip()])
+    for engine_id, report in reports.items():
+        print(f'[worker] {engine_id}: {"installed" if report["installed"] else "NOT INSTALLED - " + report["problem"]}')
     if args.smoke:
-        raise SystemExit(0 if smoke(engines, caps, args.smoke_input, args.smoke_out) else 1)
+        raise SystemExit(0 if engines and smoke(engines, caps, args.smoke_input, args.smoke_out) else 1)
+    if args.selftest:
+        worker = Worker(None, engines, caps, reports=reports)
+        worker.run_selftests(force=True)
+        print(json.dumps({k: v['selftest'] for k, v in reports.items()}, indent=2))
+        raise SystemExit(0 if worker.ready_engine_ids else 1)
     http = httpx.Client(base_url=os.environ['MAKER_INTERNAL_URL'], timeout=120,
                         headers={'Authorization': f"Bearer {os.environ['MAKER_WORKER_TOKEN']}"})
-    Worker(ApiClient(http), engines, caps).run_forever()
+    worker = Worker(ApiClient(http), engines, caps, reports=reports)
+    with worker.background_heartbeat():  # the UI shows "Not tested yet" while self-tests run
+        worker.run_selftests()
+    worker.run_forever()
 
 
 if __name__ == '__main__':

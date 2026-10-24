@@ -39,7 +39,18 @@ class EngineResult:
 
 class Engine(ABC):
     id: str
-    textured: bool = True  # output must carry base colour + metallic-roughness textures (gate V4)
+    textured: bool = True  # output must carry textures (gate V4 profile from the engine catalogue)
+    # Settings worker/selftest.py tries on the real GPU, best first: (texture size, low-VRAM mode).
+    # The first that yields a validated GLB decides "Ready" and the largest texture size jobs may request.
+    selftest_ladder: tuple[tuple[int, bool], ...] = ((2048, False), (1024, False))
+
+    @classmethod
+    def install_problem(cls) -> str | None:
+        """Cheap check without loading weights: None if installed, else what is missing and how to fix it."""
+        return None
+
+    def set_memory_mode(self, low_vram: bool) -> None:  # noqa: B027 - optional hook, default is a no-op
+        """Switch memory-saving behaviour (chosen by the self-test). Engines without options ignore it."""
 
     @abstractmethod
     def load(self) -> None:

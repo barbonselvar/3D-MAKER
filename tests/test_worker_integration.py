@@ -169,7 +169,7 @@ def test_unvalidated_format_not_downloadable(api, internal):
 
 
 def test_stub_engine_cannot_be_loaded_in_production():
-    assert set(engine_registry.PRODUCTION_ENGINES) == {'trellis2-4b'}
+    assert set(engine_registry.PRODUCTION_ENGINES) == {'trellis2-4b', 'sf3d'}
     assert all(not target.startswith('tests') for target in engine_registry.PRODUCTION_ENGINES.values())
     with pytest.raises(ValueError):
         engine_registry.load_engines(['stub'])

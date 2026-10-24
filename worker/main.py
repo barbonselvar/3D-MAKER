@@ -361,6 +361,9 @@ def main() -> None:
     ap.add_argument('--selftest', action='store_true', help='re-run the GPU self-test, print the results and exit')
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}')
+    from .windows.setup_helpers import load_env  # noqa: PLC0415 - settings written by scripts/windows/setup.ps1
+
+    load_env()
     caps = probe()
     if args.probe_only:
         print(json.dumps(caps, indent=2))

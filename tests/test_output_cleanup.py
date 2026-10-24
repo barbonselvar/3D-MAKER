@@ -32,7 +32,7 @@ def test_cleanup_ignores_stray_files():
 def test_blender_available_requires_real_binary(monkeypatch):
     monkeypatch.setenv('BLENDER_BIN', '/nonexistent/blender')
     assert main.blender_available() is False
-    monkeypatch.setenv('BLENDER_BIN', 'sh')  # any executable on PATH
+    monkeypatch.setenv('BLENDER_BIN', __import__('sys').executable)  # any real executable (also on Windows)
     assert main.blender_available() is True
     monkeypatch.delenv('BLENDER_BIN')
     assert main.blender_available() is False

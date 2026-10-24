@@ -1,0 +1,7 @@
+# Vendored files are checksummed (tests/test_vendor.py): never convert their line endings.
+app/static/vendor/** -text
+*.glb binary
+*.png binary
+*.onnx binary
+# PowerShell scripts work with either line ending; keep them CRLF on Windows checkouts for editors.
+*.ps1 text eol=crlf

@@ -68,6 +68,10 @@ def run(port: int = 8000, worker_port: int = 8001, engines: list[str] | None = N
 
 
 def main() -> None:
+    # Settings written by scripts/windows/setup.ps1 (secret key, data dir, pinned weights); env vars win.
+    from worker.windows.setup_helpers import load_env  # noqa: PLC0415
+
+    load_env()
     ap = argparse.ArgumentParser(description='Run the 3D Maker studio, API and local GPU worker on this computer.')
     ap.add_argument('--port', type=int, default=int(os.environ.get('MAKER_PORT', 8000)))
     ap.add_argument('--worker-port', type=int, default=int(os.environ.get('MAKER_WORKER_PORT', 8001)))

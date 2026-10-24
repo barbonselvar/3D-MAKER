@@ -1,0 +1,17 @@
+# Stable Fast 3D runtime dependencies for the native Windows worker (Python 3.11, 64-bit).
+# Versions are SF3D's own pins at commit ff21fc4 (its requirements.txt), except:
+# - rembg without the [gpu] extra, so background removal runs on the CPU (onnxruntime) and leaves the
+#   whole GPU to the 3D model;
+# - texture_baker / uv_unwrapper are compiled separately by scripts/windows/setup.ps1.
+# PyTorch is installed first from the CUDA 12.4 index (see setup.ps1).
+einops==0.7.0
+jaxtyping==0.2.31
+omegaconf==2.3.0
+transformers==4.42.3
+open_clip_torch==2.24.0
+trimesh==4.4.1
+numpy==1.26.4
+huggingface-hub==0.23.4
+rembg==2.0.57
+pynanoinstantmeshes==0.0.3
+gpytoolbox==0.2.0

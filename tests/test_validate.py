@@ -71,6 +71,9 @@ def test_texture_size_mismatch():
     assert 'expected 2048x2048' in gates(report)['V4'].message
 
 
+needs_posix = pytest.mark.skipif(os.name == 'nt', reason='fake Blender is a /bin/sh script')
+
+
 def fake_blender(tmp_path, line, code=0):
     """MOCK Blender: prints a canned import_check report. Tests the wrapper only, not Blender."""
     script = tmp_path / 'fake-blender'
@@ -79,6 +82,7 @@ def fake_blender(tmp_path, line, code=0):
     return str(script)
 
 
+@needs_posix
 def test_v2_wrapper_pass_and_count_mismatch(tmp_path):
     ok = 'IMPORT_CHECK_JSON:{"ok": true, "mesh_objects": 1, "triangles": 12, "materials": 1, "images": 2, "missing_images": []}'
     assert gates(run('pbr_cube.glb', blender=fake_blender(tmp_path, ok)))['V2'].status == 'passed'
@@ -87,6 +91,7 @@ def test_v2_wrapper_pass_and_count_mismatch(tmp_path):
     assert g.status == 'failed' and 'triangle count 10 != 12' in g.message
 
 
+@needs_posix
 def test_v2_wrapper_import_failure(tmp_path):
     line = 'IMPORT_CHECK_JSON:{"ok": false, "error": "bad glTF"}'
     report = run('pbr_cube.glb', blender=fake_blender(tmp_path, line, code=1))

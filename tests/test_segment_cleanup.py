@@ -100,3 +100,18 @@ def test_rembg_cpu_segmenter_selection():
     assert spec.commercial is True and 'Apache-2.0' in spec.licence
     assert isinstance(segment.make_segmenter(spec), segment.RembgSegmenter)
     assert isinstance(segment.make_segmenter(segment.choose('birefnet')), segment.BiRefNetSegmenter)
+
+
+def test_rembg_u2net_real_on_cpu(tmp_path, monkeypatch):
+    """REAL rembg + U^2-Net (onnxruntime CPU) on the self-test photo. Skipped where rembg is not installed
+    (it is in the Windows worker environment; first run downloads u2net.onnx, ~170 MB, MD5-checked)."""
+    pytest.importorskip('rembg')
+    if 'U2NET_HOME' not in __import__('os').environ:
+        monkeypatch.setenv('U2NET_HOME', str(Path.home() / '.u2net'))
+    seg = segment.RembgSegmenter().load()
+    photo = Image.open(Path(__file__).parents[1] / 'worker' / 'smoke' / 'sphere_on_white.png')
+    rgba, info = segment.segment(photo, seg)
+    # The sphere covers pi * 0.4^2 ~ 50 % of the frame; U^2-Net should find roughly that.
+    assert 0.35 < info['coverage'] < 0.65, info
+    alpha = np.asarray(rgba.getchannel('A'))
+    assert alpha[256, 256] > 200 and alpha[5, 5] < 50  # centre kept, corner removed

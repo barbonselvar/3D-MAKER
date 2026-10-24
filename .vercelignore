@@ -1,0 +1,8 @@
+# The public Vercel site is the static studio only (app/static). Everything else stays out of the upload:
+# the FastAPI backend, the private worker API, the GPU worker, scripts, tests and dependency files.
+# Allow-list: ignore everything, then re-include the static studio and the deployment config.
+/*
+!/vercel.json
+!/app
+/app/*
+!/app/static

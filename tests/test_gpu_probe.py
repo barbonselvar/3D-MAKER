@@ -30,22 +30,22 @@ def runner(nvidia=None, rocm=None, nvidia_error=None, banner=None):
             if nvidia is None:
                 raise gpu_probe.ProbeError(nvidia_error or 'nvidia-smi not found')
             if len(cmd) == 1:
-                return (FIX / banner).read_text() if banner else ''
-            return (FIX / nvidia).read_text()
+                return (FIX / banner).read_text(encoding='utf-8') if banner else ''
+            return (FIX / nvidia).read_text(encoding='utf-8')
         if rocm is None:
             raise gpu_probe.ProbeError('rocm-smi not found')
-        return (FIX / rocm).read_text()
+        return (FIX / rocm).read_text(encoding='utf-8')
     return run
 
 
 def test_parse_l40s():
-    [d] = gpu_probe.parse_nvidia_smi((FIX / 'l40s_48gb.txt').read_text())
+    [d] = gpu_probe.parse_nvidia_smi((FIX / 'l40s_48gb.txt').read_text(encoding='utf-8'))
     assert d == {'name': 'NVIDIA L40S', 'vram_total_mb': 46068, 'vram_free_mb': 45512, 'driver': '550.54.15'}
 
 
 def test_parse_rejects_garbage():
     with pytest.raises(gpu_probe.ProbeError):
-        gpu_probe.parse_nvidia_smi((FIX / 'driver_missing.txt').read_text())
+        gpu_probe.parse_nvidia_smi((FIX / 'driver_missing.txt').read_text(encoding='utf-8'))
 
 
 def test_no_gpu_at_all():
@@ -55,7 +55,7 @@ def test_no_gpu_at_all():
 
 
 def test_driver_missing():
-    msg = (FIX / 'driver_missing.txt').read_text().strip()
+    msg = (FIX / 'driver_missing.txt').read_text(encoding='utf-8').strip()
     p = gpu_probe.probe(runner(nvidia_error=msg), torch=fake_torch())
     assert p['backend'] == 'cpu'
     assert any("couldn't communicate with the NVIDIA driver" in e for e in p['errors'])
@@ -203,7 +203,7 @@ def test_nvidia_smi_found_in_windows_locations(monkeypatch):
 
 
 def test_parse_driver_cuda():
-    assert gpu_probe.parse_driver_cuda((FIX / 'banner_win_cuda127.txt').read_text()) == '12.7'
+    assert gpu_probe.parse_driver_cuda((FIX / 'banner_win_cuda127.txt').read_text(encoding='utf-8')) == '12.7'
     assert gpu_probe.parse_driver_cuda('no banner') is None
 
 

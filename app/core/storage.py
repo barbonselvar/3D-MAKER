@@ -58,7 +58,7 @@ class LocalStorage:
 
     def content_type(self, key: str) -> str:
         meta = self.path(key).with_suffix('.meta')
-        return json.loads(meta.read_text())['content_type'] if meta.exists() else 'application/octet-stream'
+        return json.loads(meta.read_text(encoding='utf-8'))['content_type'] if meta.exists() else 'application/octet-stream'
 
     def exists(self, key: str) -> bool:
         try:

@@ -9,7 +9,9 @@ target-version = "py310"
 extend-exclude = [".venv"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP"]
+preview = true
+explicit-preview-rules = true  # only preview rules named in select (PLW1514)
+select = ["E", "F", "W", "I", "B", "UP", "PLW1514"]  # PLW1514: Windows defaults to cp1252
 # B008: FastAPI's File()/Form()/Depends() defaults are the framework idiom.
 ignore = ["B008", "E501"]
 

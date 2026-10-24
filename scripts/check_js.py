@@ -17,13 +17,13 @@ def main() -> int:
     targets: list[Path] = sorted((STATIC / 'js').glob('**/*.js')) if (STATIC / 'js').is_dir() else []
     tmp = Path(tempfile.mkdtemp())
     for html in sorted(STATIC.glob('*.html')):
-        for i, body in enumerate(re.findall(r'<script type="module">(.*?)</script>', html.read_text(), re.S)):
+        for i, body in enumerate(re.findall(r'<script type="module">(.*?)</script>', html.read_text(encoding='utf-8'), re.S)):
             out = tmp / f'{html.stem}-{i}.mjs'
-            out.write_text(body)
+            out.write_text(body, encoding='utf-8')
             targets.append(out)
     failed = 0
     for path in targets:
-        result = subprocess.run(['node', '--check', str(path)], capture_output=True, text=True)
+        result = subprocess.run(['node', '--check', str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace')
         status = 'ok' if result.returncode == 0 else 'FAIL'
         print(f'{status}  {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name}')
         if result.returncode:

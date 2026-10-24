@@ -7,7 +7,7 @@ STATIC = Path(__file__).resolve().parents[1] / 'app' / 'static'
 
 
 def test_vendored_files_match_checksums():
-    lines = (STATIC / 'vendor' / 'SHA256SUMS').read_text().split('\n')
+    lines = (STATIC / 'vendor' / 'SHA256SUMS').read_text(encoding='utf-8').split('\n')
     entries = [line.split(None, 1) for line in lines if line.strip()]
     assert entries
     for digest, rel in entries:
@@ -16,7 +16,7 @@ def test_vendored_files_match_checksums():
 
 def browser_sources():
     files = list(STATIC.glob('*.html')) + list((STATIC / 'js').glob('**/*.js'))
-    return {f: f.read_text() for f in files}
+    return {f: f.read_text(encoding='utf-8') for f in files}
 
 
 def test_no_runtime_cdn_code():

@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(not PWSH or os.name == 'nt',
 
 def fake(path: Path, body: str):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('#!/bin/sh\n' + body + '\n')
+    path.write_text('#!/bin/sh\n' + body + '\n', encoding='utf-8')
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 
@@ -34,7 +34,7 @@ def windows_like(tmp_path, cuda='12.7', vram='6141', with_cuda_toolkit=True, wit
         fake(pf86 / 'Microsoft Visual Studio' / 'Installer' / 'vswhere.exe', f'echo "{tmp_path / "vs"}"')
         tools = tmp_path / 'vs' / 'VC' / 'Auxiliary' / 'Build'
         tools.mkdir(parents=True)
-        (tools / 'Microsoft.VCToolsVersion.default.txt').write_text('14.41.34120')
+        (tools / 'Microsoft.VCToolsVersion.default.txt').write_text('14.41.34120', encoding='utf-8')
     env = {'PATH': f'{bin_dir}:{os.environ["PATH"]}', 'OS': 'Windows_NT', 'ProgramFiles(x86)': str(pf86),
            'ProgramFiles': str(pf), 'SystemRoot': str(tmp_path / 'win'), 'HOME': str(tmp_path)}
     if with_cuda_toolkit:
@@ -46,7 +46,7 @@ def windows_like(tmp_path, cuda='12.7', vram='6141', with_cuda_toolkit=True, wit
 
 def run(script, env, *args):
     return subprocess.run([PWSH, '-NoLogo', '-NoProfile', '-File', str(ROOT / 'scripts' / 'windows' / script), *args],
-                          capture_output=True, text=True, env=env, timeout=120)
+                          capture_output=True, text=True, encoding='utf-8', errors='replace', env=env, timeout=120)
 
 
 @pytest.mark.parametrize('script', ['setup.ps1', 'start.ps1'])

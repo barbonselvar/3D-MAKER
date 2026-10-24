@@ -311,7 +311,7 @@ def smoke(engines: dict[str, Engine], probe: dict, image_path: str, out_dir: str
         job = {'id': 'smoke', 'params': params, 'input': {'sha256': hashlib.sha256(data).hexdigest()}}
         manifest = Worker(None, engines, probe).manifest(job, engine, result, report, {}, time.monotonic() - started)
         (out / f'{engine.id}.glb').write_bytes(result.glb)
-        (out / f'{engine.id}.manifest.json').write_text(json.dumps(manifest, indent=2))
+        (out / f'{engine.id}.manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
         print(f'[smoke] {engine.id}: {len(result.glb)} bytes, validation {"PASSED" if report.passed else "FAILED"}')
         for gate in report.gates:
             print(f'[smoke]   {gate.id} {gate.status:<7} {gate.message}')

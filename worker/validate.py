@@ -75,7 +75,7 @@ def gate_v1(path: Path, node: str = 'node') -> Gate:
     if shutil.which(node) is None or not (HERE / 'node_modules' / 'gltf-validator').is_dir():
         return Gate('V1', 'glTF-Validator', 'skipped', 'Node.js or gltf-validator not installed (run npm ci in worker/).')
     try:
-        out = subprocess.run([node, str(script), str(path)], capture_output=True, text=True, timeout=300)
+        out = subprocess.run([node, str(script), str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=300)
     except subprocess.TimeoutExpired:
         return Gate('V1', 'glTF-Validator', 'failed', 'Validator timed out.')
     if out.returncode != 0:
@@ -98,7 +98,7 @@ def gate_v2(path: Path, blender: str | None, expect_triangles: int | None, expec
         return Gate('V2', 'Blender import', 'skipped', 'Blender not installed (set BLENDER_BIN).')
     cmd = [blender, '--background', '--factory-startup', '--python', str(HERE / 'blender' / 'import_check.py'), '--', str(path)]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        out = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)
     except subprocess.TimeoutExpired:
         return Gate('V2', 'Blender import', 'failed', 'Blender import timed out.')
     line = next((ln for ln in out.stdout.splitlines() if ln.startswith('IMPORT_CHECK_JSON:')), None)

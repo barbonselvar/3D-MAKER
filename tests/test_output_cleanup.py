@@ -23,7 +23,7 @@ def test_cleanup_removes_only_expired_folders():
 
 def test_cleanup_ignores_stray_files():
     stray = main.OUTPUT / 'note.txt'
-    stray.write_text('keep')
+    stray.write_text('keep', encoding='utf-8')
     os.utime(stray, (0, 0))
     main.cleanup_outputs(now=2_000_000_000.0)
     assert stray.exists()

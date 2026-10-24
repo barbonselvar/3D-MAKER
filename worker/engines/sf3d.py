@@ -10,7 +10,8 @@ Memory-saving options (only what upstream supports, plus one exact refactor):
 - batch size 1, one job at a time (sequential);
 - background removal on the CPU (rembg U^2-Net via onnxruntime), not on the GPU;
 - low-VRAM mode: the marching-tetrahedra grid is queried in chunks instead of in one pass.
-  The query and decoder are per-point, so the result is the same; only peak memory changes;
+  The query and decoder are per-point, so the result is the same up to floating-point rounding;
+  only peak memory changes;
 - optional: move the model to system RAM while idle (SF3D_OFFLOAD_IDLE=1) to free VRAM for other apps.
 
 Licence: Stability AI Community License (see docs/WINDOWS.md). Outputs belong to the user; commercial use
@@ -41,7 +42,8 @@ def chunked_triplane_to_meshes(model, triplanes, chunk: int, scale_tensor=None, 
     """sf3d.system.SF3D.triplane_to_meshes (at SF3D_COMMIT) with the grid query split into chunks.
 
     query_triplane and the decoder act on each grid point independently, so concatenating chunk
-    results equals the single-pass result. scale_tensor/cat are injectable for CPU unit tests.
+    results equals the single-pass result up to floating-point rounding (different batch sizes can
+    take different kernel paths). scale_tensor/cat are injectable for CPU unit tests.
     """
     if scale_tensor is None:
         from sf3d.models.utils import scale_tensor  # noqa: PLC0415 - upstream helper

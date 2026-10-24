@@ -119,7 +119,7 @@ class SelfTestStore:
 
     def _read(self) -> dict:
         try:
-            return json.loads(self.path.read_text())
+            return json.loads(self.path.read_text(encoding='utf-8'))
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
@@ -132,7 +132,7 @@ class SelfTestStore:
         data[engine_id] = {'fingerprint': fp, 'result': result}
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix('.tmp')
-        tmp.write_text(json.dumps(data, indent=2))
+        tmp.write_text(json.dumps(data, indent=2), encoding='utf-8')
         os.replace(tmp, self.path)
 
 

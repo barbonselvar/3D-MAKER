@@ -119,7 +119,8 @@ The other memory-saving measures:
 - Background removal runs on the CPU.
 - One image is processed at a time.
 - The transformer runs in bf16, as upstream does.
-- Low-VRAM mode evaluates SF3D's 3D grid in chunks. The result is the same; only the peak memory changes.
+- Low-VRAM mode evaluates SF3D's 3D grid in chunks. The result is the same up to floating-point
+  rounding; only the peak memory changes.
 - `SF3D_OFFLOAD_IDLE=1` in `worker.env` moves the model to system RAM between jobs, freeing VRAM for
   other programs. This makes each job slower to start.
 

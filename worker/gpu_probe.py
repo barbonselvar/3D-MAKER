@@ -29,7 +29,7 @@ class ProbeError(RuntimeError):
 
 def run_command(cmd: list[str]) -> str:
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20)
     except FileNotFoundError:
         raise ProbeError(f'{cmd[0]} not found') from None
     except subprocess.TimeoutExpired:

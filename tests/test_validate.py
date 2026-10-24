@@ -77,7 +77,7 @@ needs_posix = pytest.mark.skipif(os.name == 'nt', reason='fake Blender is a /bin
 def fake_blender(tmp_path, line, code=0):
     """MOCK Blender: prints a canned import_check report. Tests the wrapper only, not Blender."""
     script = tmp_path / 'fake-blender'
-    script.write_text(f"#!/bin/sh\necho 'Blender 4.2.0 (fake)'\necho '{line}'\nexit {code}\n")
+    script.write_text(f"#!/bin/sh\necho 'Blender 4.2.0 (fake)'\necho '{line}'\nexit {code}\n", encoding='utf-8')
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     return str(script)
 

@@ -229,9 +229,10 @@ def test_chunked_query_equals_single_pass(chunk):
     batch = type('Triplanes', (), {'shape': (2,), 'device': 'cpu', '__getitem__': lambda self, i: planes[i]})()
     meshes = sf3d.chunked_triplane_to_meshes(model, batch, chunk, scale_tensor=lambda x, a, b: x,
                                              cat=lambda parts: np.concatenate(parts, axis=-2).view(TensorLike))
+    # Equal up to floating-point rounding: different batch sizes take different BLAS paths (seen in CI: 1 ulp).
     for mesh, (sdf, deform) in zip(meshes, single_pass(model, planes), strict=True):
-        np.testing.assert_array_equal(mesh.sdf, sdf)
-        np.testing.assert_array_equal(mesh.deform, deform)
+        np.testing.assert_allclose(mesh.sdf, sdf, rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(mesh.deform, deform, rtol=1e-12, atol=1e-12)
 
 
 # --- install check --------------------------------------------------------------------------------

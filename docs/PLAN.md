@@ -125,7 +125,7 @@ any public exposure.
 | Stable Fast 3D engine (`worker/engines/sf3d.py`) | Written against SF3D `ff21fc4`; wiring tested against a mock of upstream; **NOT VERIFIED on a GPU** | `tests/test_sf3d_adapter.py` |
 | Engine statuses: Ready, Unsupported, Out of memory, Not installed (plus Not tested yet, Self-test failed) | Done | `tests/test_gpu_probe.py`, `tests/ui/test_generate_panel.py` |
 | GPU self-test on the user's machine; texture limit; out-of-memory step-down | Done (mock engine) | `tests/test_selftest.py` |
-| Memory options: 512–2048 px textures, low-VRAM chunked grid query, bf16, CPU background removal, sequential jobs, idle offload | Done; chunking equivalence tested with NumPy stand-ins | `tests/test_sf3d_adapter.py` |
+| Memory options: 512–2048 px textures, low-VRAM chunked grid query, bf16, CPU background removal, sequential jobs, idle offload | Done; chunking equivalence (to floating-point rounding) tested with NumPy stand-ins | `tests/test_sf3d_adapter.py` |
 | Windows probe (nvidia-smi locations, `[N/A]`, driver CUDA vs PyTorch CUDA) | Done (synthetic outputs) | `tests/test_gpu_probe.py` |
 | One-command local stack | Done | `tests/test_local_stack.py` |
 | `scripts/windows/setup.ps1`, `start.ps1` | Written; parse/lint clean; check phase executed with simulated tools and on Windows CI; **full install not run on a real PC** | `tests/test_windows_scripts.py`, CI `windows` job |

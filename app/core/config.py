@@ -23,6 +23,7 @@ class Settings:
     data_dir: Path
     secret_key: bytes
     worker_tokens: dict[str, str] = field(default_factory=dict)
+    api_token: str | None = None  # single-owner bearer token for /api/v1 (real auth: P4-01)
     signed_url_ttl: int = 600  # seconds (blueprint: presigned GET valid 10 minutes)
     heartbeat_fresh: int = 45  # a worker counts as online if it reported within this many seconds
     heartbeat_lost: int = 120  # an active job whose worker is silent this long is requeued once
@@ -37,4 +38,5 @@ class Settings:
             # Without a configured key, signed URLs only survive until the process restarts.
             secret_key=secret.encode() if secret else secrets.token_bytes(32),
             worker_tokens=_worker_tokens(os.environ.get('MAKER_WORKER_TOKENS', '')),
+            api_token=os.environ.get('MAKER_API_TOKEN') or None,
         )

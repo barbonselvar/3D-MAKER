@@ -8,18 +8,24 @@ from uuid import uuid4
 
 import numpy as np
 import trimesh
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from shapely.geometry import Polygon
 
+from .api import files as files_api
+from .api import uploads as uploads_api
+from .core.config import Settings
+from .core.context import Context
+from .core.errors import ApiError, api_error_handler
+
 ROOT = Path(__file__).resolve().parent
 OUTPUT = Path(os.environ.get('MAKER_OUTPUT', tempfile.gettempdir() + '/3d-maker-output'))
 OUTPUT.mkdir(parents=True, exist_ok=True)
 OUTPUT_TTL_SECONDS = 24 * 3600
-app = FastAPI(title='3D Maker', version='0.1.0')
-app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
+# Original silhouette API (kept unchanged under /api; the AI pipeline lives under /api/v1).
+legacy = APIRouter()
 
 
 
@@ -42,11 +48,11 @@ def blender_available() -> bool:
     return bool(binary) and shutil.which(binary) is not None
 
 
-@app.get('/api/health')
+@legacy.get('/api/health')
 def health():
     return {'status': 'ok', 'modes': ['silhouette'], 'ai_enabled': False, 'blender_available': blender_available()}
 
-@app.post('/api/generate')
+@legacy.post('/api/generate')
 async def generate(image: UploadFile = File(...), depth: float = Form(0.25)):
     if not 0.02 <= depth <= 2:
         raise HTTPException(400, 'Depth must be between 0.02 and 2')
@@ -101,7 +107,7 @@ async def generate(image: UploadFile = File(...), depth: float = Form(0.25)):
     mesh.export(folder / 'model.ply')
     return {'id': identifier, 'preview': f'/api/files/{identifier}/model.glb', 'formats': ['glb','obj','stl','ply'], 'method': 'silhouette extrusion (not AI reconstruction)', 'faces': len(mesh.faces)}
 
-@app.get('/api/files/{identifier}/{filename}')
+@legacy.get('/api/files/{identifier}/{filename}')
 def download(identifier: str, filename: str):
     if len(identifier) != 32 or not all(c in '0123456789abcdef' for c in identifier):
         raise HTTPException(404)
@@ -113,6 +119,19 @@ def download(identifier: str, filename: str):
     return FileResponse(path, filename=filename if filename != 'model.glb' else '3d-maker.glb')
 
 
-# Serve the studio (index.html plus ./vendor and ./js modules) at the site root.
-# Mounted last so every /api route registered above takes precedence.
-app.mount('/', StaticFiles(directory=ROOT / 'static', html=True), name='site')
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    app = FastAPI(title='3D Maker', version='0.2.0')
+    app.state.ctx = Context.create(settings or Settings.from_env())
+    app.add_exception_handler(ApiError, api_error_handler)
+    app.include_router(legacy)
+    app.include_router(uploads_api.router)
+    app.include_router(files_api.router)
+    app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
+    # Serve the studio (index.html plus ./vendor and ./js modules) at the site root.
+    # Mounted last so every /api route registered above takes precedence.
+    app.mount('/', StaticFiles(directory=ROOT / 'static', html=True), name='site')
+    return app
+
+
+app = create_app()

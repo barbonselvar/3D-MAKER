@@ -47,3 +47,17 @@ def test_local_exports_download(page, fmt):
     assert len(data) > 100
     if fmt == 'glb':
         assert data[:4] == b'glTF'
+
+
+def test_viewer_tool_buttons_toggle(page):
+    page.select_option('#mode', 'table')
+    page.click('#generate')
+    page.wait_for_function("document.querySelector('#modelname').textContent === 'Editable table'")
+    page.click('#wire')
+    assert page.get_attribute('#wire', 'aria-pressed') == 'true'
+    page.click('#wire')
+    assert page.get_attribute('#wire', 'aria-pressed') == 'false'
+    page.click('#rotate')
+    assert page.get_attribute('#rotate', 'aria-pressed') == 'false'
+    page.click('#reset')
+    assert page.errors == []

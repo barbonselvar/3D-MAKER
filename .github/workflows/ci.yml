@@ -64,6 +64,13 @@ jobs:
       - name: setup.ps1 -CheckOnly stops cleanly without an NVIDIA driver (Windows PowerShell 5.1)
         shell: powershell
         run: |
+          # The script is expected to stop (no NVIDIA driver here); under 'Stop', PowerShell 5.1 would turn the
+          # child's redirected stderr into a terminating error before we can check the message.
+          $ErrorActionPreference = 'Continue'
           $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\setup.ps1 -CheckOnly 2>&1 | Out-String
+          $code = $LASTEXITCODE
           Write-Output $out
+          if ($code -eq 0) { throw 'setup.ps1 -CheckOnly should fail without an NVIDIA driver' }
           if ($out -notmatch 'nvidia-smi was not found') { throw 'expected the missing-driver message' }
+          Write-Output 'OK: setup.ps1 stopped with the missing-driver message.'
+          exit 0

@@ -62,6 +62,37 @@ def wait_for_job(page, ctx, timeout=10):
     raise AssertionError('no job was created')
 
 
+def run_in_thread(worker):
+    """Run one worker iteration in a thread, keeping any exception for the failure report."""
+    worker.thread_error = None
+
+    def target():
+        try:
+            worker.run_once()
+        except BaseException as e:  # noqa: BLE001 - surfaced by wait_for_result
+            worker.thread_error = repr(e)
+    worker.thread = threading.Thread(target=target, daemon=True)
+    worker.thread.start()
+    page_worker['current'] = worker
+
+
+page_worker = {}
+
+
+def wait_for_result(page, ctx, timeout=30_000):
+    try:
+        page.wait_for_function("document.querySelector('#stats').textContent.includes('Local GPU')", timeout=timeout)
+    except Exception:
+        worker = page_worker.get('current')
+        with ctx.db.connect() as conn:
+            rows = [dict(r) for r in conn.execute(
+                'SELECT id, status, stage, error_code, error_message FROM jobs ORDER BY created_at DESC LIMIT 2')]
+        raise AssertionError(f"model never appeared. status={page.text_content('#status')!r} jobs={rows} "
+                             f"worker_error={getattr(worker, 'thread_error', None)} "
+                             f"worker_alive={worker.thread.is_alive() if worker else None}") from None
+    page_worker['current'].thread.join(10)
+
+
 def test_internal_card_disabled_with_reason_when_no_worker(page, ctx):
     open_panel(page)
     assert page.is_disabled('#start-internal')
@@ -86,10 +117,8 @@ def test_internal_gpu_job_end_to_end(page, ctx):
     wait_for_job(page, ctx)
     page.wait_for_function("document.querySelector('#status').textContent.startsWith('Queued')")
     assert page.is_visible('#cancelai') and page.is_disabled('#generate')
-    t = threading.Thread(target=worker.run_once)
-    t.start()
-    page.wait_for_function("document.querySelector('#stats').textContent.includes('Local GPU')", timeout=20_000)
-    t.join()
+    run_in_thread(worker)
+    wait_for_result(page, ctx)
     assert 'estimated' in page.text_content('#status')
     assert page.eval_on_selector_all('#jobstages li.done', 'els => els.length') == 7
     assert page.is_disabled('#color')  # textured result
@@ -168,10 +197,8 @@ def test_rtx4050_statuses_and_texture_cap(page, ctx, tmp_path, monkeypatch):
     assert 'RTX 4050' in page.text_content('#int-status')
     page.click('#start-internal')
     wait_for_job(page, ctx)
-    t = threading.Thread(target=worker.run_once)
-    t.start()
-    page.wait_for_function("document.querySelector('#stats').textContent.includes('Local GPU')", timeout=20_000)
-    t.join()
+    run_in_thread(worker)
+    wait_for_result(page, ctx)
     stats = page.text_content('#stats')
     assert 'sf3d' in stats and '512 px' in stats and 'Powered by Stability AI' in stats
 

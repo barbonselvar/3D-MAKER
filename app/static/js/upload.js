@@ -6,7 +6,7 @@ let imgURL;
 let inputVersion = 0;
 let onReady = () => {};
 
-function selectImage(source, label) {
+function selectImage(source, label, file = null) {
   const version = ++inputVersion;
   const next = new Image();
   next.onload = () => {
@@ -16,6 +16,7 @@ function selectImage(source, label) {
       return;
     }
     state.img = next;
+    state.file = file;
     state.name = label.replace(/\.[^.]+$/, '');
     state.sourceName = state.name;
     $('#thumb').src = source;
@@ -41,7 +42,7 @@ function accept(file) {
   }
   if (imgURL) URL.revokeObjectURL(imgURL);
   imgURL = URL.createObjectURL(file);
-  selectImage(imgURL, file.name);
+  selectImage(imgURL, file.name, file);
 }
 
 function drawSample(kind) {

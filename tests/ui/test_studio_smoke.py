@@ -28,11 +28,15 @@ def test_table_builder(page):
     assert 'not AI' in page.text_content('#stats')
 
 
-def test_ai_mode_requires_consent(page):
+def test_ai_mode_opens_gpu_choice_and_external_needs_consent(page):
     page.click('[data-sample=bolt]')
     page.wait_for_function("document.querySelector('#status').textContent.startsWith('Ready')")
     page.click('#generate')
-    assert 'image-sharing box' in page.text_content('#status')
+    page.wait_for_selector('#genpanel[open]')
+    page.wait_for_function("!document.querySelector('#int-status').textContent.startsWith('Checking')")
+    assert page.is_disabled('#start-external')  # no consent yet
+    page.check('#cloudconsent')
+    assert page.is_enabled('#start-external')
 
 
 @pytest.mark.parametrize('fmt', ['glb', 'obj', 'stl', 'ply'])

@@ -37,12 +37,19 @@ def mocked(page):
     page.route('https://mock.invalid/**', lambda r: r.fulfill(body=FIXTURE.read_bytes(), content_type='model/gltf-binary'))
     page.click('[data-sample=bolt]')
     page.wait_for_function("document.querySelector('#status').textContent.startsWith('Ready')")
-    page.check('#cloudconsent')
     return page
 
 
+def start_demo(page):
+    page.click('#generate')
+    page.wait_for_selector('#genpanel[open]')
+    page.check('input[value="external:hf-demo"]')
+    page.check('#cloudconsent')
+    page.click('#start-external')
+
+
 def test_demo_flow_loads_model_and_keeps_original_bytes(mocked):
-    mocked.click('#generate')
+    start_demo(mocked)
     mocked.wait_for_function("document.querySelector('#stats').textContent.includes('TRELLIS.2 AI')")
     assert mocked.evaluate('window.__space') == 'microsoft/TRELLIS.2'
     calls = mocked.evaluate('window.__calls')
@@ -59,7 +66,7 @@ def test_demo_flow_loads_model_and_keeps_original_bytes(mocked):
 def test_demo_error_never_substitutes_a_local_mesh(mocked):
     mocked.evaluate("window.__mockFail = '/image_to_3d'")
     before = mocked.text_content('#stats')
-    mocked.click('#generate')
+    start_demo(mocked)
     mocked.wait_for_function("document.querySelector('#status').textContent.startsWith('AI unavailable')")
     assert 'No local substitute was generated' in mocked.text_content('#status')
     assert mocked.text_content('#stats') == before

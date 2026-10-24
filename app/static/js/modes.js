@@ -1,9 +1,10 @@
 // Generation modes: AI (public demo), table builder and silhouette extrusion; plus GLB import.
 import * as THREE from 'three';
+import { cancelCurrent, onBusyChange, setBusy } from './busy.js';
 import { $, setStatus, toast } from './dom.js';
-import * as hfdemo from './hfdemo.js';
+import { openPanel } from './generate.js';
 import { state } from './state.js';
-import { disposeObject, loadGLB, mat, replaceObject } from './viewer.js';
+import { loadGLB, mat, replaceObject } from './viewer.js';
 
 function build(image, depth) {
   const n = 96;
@@ -95,11 +96,11 @@ export function updateMode() {
   $('#localsettings').hidden = m !== 'silhouette';
   $('#modehelp').textContent =
     m === 'ai'
-      ? 'AI reconstructs shape and materials. Shared GPU service; quotas, waiting, or sign-in may apply.'
+      ? 'AI reconstructs shape and PBR materials on an Internal GPU (your own worker) or an External GPU.'
       : m === 'table'
         ? 'Build a true 3D table with separated legs. Adjustable template, not image reconstruction.'
         : 'Flat silhouette with thickness. This mode cannot reconstruct furniture.';
-  $('#generate').textContent = m === 'ai' ? '✦ Generate with AI' : m === 'table' ? 'Build editable table' : 'Extrude silhouette';
+  $('#generate').textContent = m === 'ai' ? '✦ Generate' : m === 'table' ? 'Build editable table' : 'Extrude silhouette';
   $('#generate').disabled = state.busy || (m !== 'table' && !state.img);
 }
 
@@ -107,28 +108,10 @@ async function generate() {
   if (state.busy) return;
   const mode = $('#mode').value;
   if (mode !== 'table' && !state.img) return;
-  if (mode === 'ai' && !$('#cloudconsent').checked) {
-    setStatus('Check the image-sharing box to use the external AI service.');
-    return;
-  }
-  state.busy = true;
-  $('#mode').disabled = true;
-  $('#generate').disabled = true;
-  $('#file').disabled = true;
-  $('#importbtn').disabled = true;
-  $('#cancelai').hidden = mode !== 'ai';
+  if (mode === 'ai') return openPanel(); // choose Internal GPU or External GPU
+  setBusy(true);
   try {
-    if (mode === 'ai') {
-      state.name = state.sourceName;
-      const bytes = await hfdemo.generate(state.img, $('#quality').value);
-      const object = await loadGLB(bytes.slice(0));
-      if (hfdemo.isCancelled()) {
-        disposeObject(object);
-        throw Error('Cancelled');
-      }
-      replaceObject(object, state.name, 'TRELLIS.2 AI', bytes);
-      setStatus('AI model ready. GLB preserves textures; other formats may omit them.');
-    } else if (mode === 'table') {
+    if (mode === 'table') {
       state.name = 'table';
       replaceObject(tableModel(), 'Editable table', 'Local table template · not AI');
       setStatus('Four-leg 3D table created. Adjust its proportions above.');
@@ -138,22 +121,9 @@ async function generate() {
       setStatus('Silhouette ready. For full geometry, choose AI reconstruction.');
     }
   } catch (e) {
-    setStatus(
-      mode === 'ai' && hfdemo.isCancelled()
-        ? 'AI job cancelled.'
-        : mode === 'ai'
-          ? 'AI unavailable: ' +
-            (e.message || String(e)) +
-            '. Try the official service link for sign-in or GPU quota information. No local substitute was generated.'
-          : e.message,
-    );
+    setStatus(e.message);
   } finally {
-    state.busy = false;
-    $('#mode').disabled = false;
-    $('#file').disabled = false;
-    $('#importbtn').disabled = false;
-    $('#cancelai').hidden = true;
-    updateMode();
+    setBusy(false);
   }
 }
 
@@ -175,6 +145,7 @@ async function importGLB(e) {
 export function initModes() {
   $('#depth').oninput = () => ($('#depthval').value = $('#depth').value);
   $('#mode').onchange = updateMode;
+  onBusyChange(updateMode);
   updateMode();
   for (const id of ['tw', 'td', 'th'])
     $('#' + id).oninput = () => {
@@ -183,7 +154,7 @@ export function initModes() {
         replaceObject(tableModel(), 'Editable table', 'Local table template · not AI');
       }
     };
-  $('#cancelai').onclick = hfdemo.cancel;
+  $('#cancelai').onclick = cancelCurrent;
   $('#importbtn').onclick = () => $('#importfile').click();
   $('#importfile').onchange = importGLB;
   $('#generate').onclick = generate;

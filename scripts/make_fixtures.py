@@ -106,6 +106,7 @@ def crafted_fixtures() -> dict[str, bytes]:
     good = build_glb(v, f, uv, pbr)
     return {
         'pbr_cube.glb': good,
+        'pbr_cube_2048.glb': build_glb(v, f, uv, {'baseColorTexture': png(2048), 'metallicRoughnessTexture': png(2048, (0, 128, 255))}),
         'bad_nan.glb': build_glb(nan_v, f, uv, pbr),
         'bad_uv_range.glb': build_glb(v, f, uv * 1.5, pbr),
         'bad_webp.glb': build_glb(v, f, uv, pbr, mime='image/webp', extensions_used=['EXT_texture_webp']),

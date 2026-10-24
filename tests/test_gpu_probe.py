@@ -12,18 +12,25 @@ from worker import gpu_probe
 FIX = Path(__file__).parent / 'fixtures' / 'nvidia_smi'
 
 
-def fake_torch(cuda=False, hip=None, mps=False, cap=(8, 9)):
+def fake_torch(cuda=False, hip=None, mps=False, cap=(8, 9), runtime='12.4', mem=None, name='NVIDIA L40S'):
+    def mem_get_info(i):
+        if mem is None:
+            raise RuntimeError('no device')
+        return mem
     return SimpleNamespace(
-        __version__='2.6.0', version=SimpleNamespace(cuda='12.4' if cuda and not hip else None, hip=hip),
-        cuda=SimpleNamespace(is_available=lambda: cuda, get_device_capability=lambda i: cap),
+        __version__='2.6.0', version=SimpleNamespace(cuda=runtime if cuda and not hip else None, hip=hip),
+        cuda=SimpleNamespace(is_available=lambda: cuda, get_device_capability=lambda i: cap,
+                             get_device_name=lambda i: name, mem_get_info=mem_get_info),
         backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: mps)))
 
 
-def runner(nvidia=None, rocm=None, nvidia_error=None):
+def runner(nvidia=None, rocm=None, nvidia_error=None, banner=None):
     def run(cmd):
-        if cmd[0] == 'nvidia-smi':
+        if 'nvidia-smi' in cmd[0]:
             if nvidia is None:
                 raise gpu_probe.ProbeError(nvidia_error or 'nvidia-smi not found')
+            if len(cmd) == 1:
+                return (FIX / banner).read_text() if banner else ''
             return (FIX / nvidia).read_text()
         if rocm is None:
             raise gpu_probe.ProbeError('rocm-smi not found')
@@ -157,3 +164,44 @@ def test_targets_with_12gb_worker_explains(api):
 def test_stale_worker_ignored(api):
     add_worker(api, 'w1', probe_for('l40s_48gb.txt'), ['trellis2-4b'], age=46)
     assert targets(api)['internal']['available'] is False
+
+
+# --- native Windows (synthetic RTX 4050 Laptop outputs; see fixtures README) ----------------------
+
+def test_windows_rtx4050_laptop():
+    p = gpu_probe.probe(runner('rtx4050_laptop_win.txt', banner='banner_win_cuda127.txt'),
+                        torch=fake_torch(cuda=True, name='NVIDIA GeForce RTX 4050 Laptop GPU'))
+    assert p['backend'] == 'cuda' and p['driver_cuda'] == '12.7'
+    d = p['devices'][0]
+    assert (d['name'], d['vram_total_mb'], d['vram_free_mb'], d['driver']) == (
+        'NVIDIA GeForce RTX 4050 Laptop GPU', 6141, 5329, '566.36')
+
+
+def test_windows_na_free_memory_filled_from_torch():
+    torch = fake_torch(cuda=True, mem=(5100 * 2**20, 6141 * 2**20))
+    p = gpu_probe.probe(runner('rtx4050_laptop_win_na.txt', banner='banner_win_cuda127.txt'), torch=torch)
+    assert p['devices'][0]['vram_free_mb'] == 5100
+
+
+def test_driver_too_old_for_torch_cuda_runtime():
+    p = gpu_probe.probe(runner('rtx4050_laptop_win.txt', banner='banner_win_cuda122.txt'), torch=fake_torch(cuda=True))
+    assert p['backend'] == 'cpu'
+    assert 'driver supports CUDA 12.2 but PyTorch was built for CUDA 12.4' in p['errors'][-1]
+
+
+def test_gpu_present_torch_not_installed(monkeypatch):
+    monkeypatch.setitem(__import__('sys').modules, 'torch', None)
+    p = gpu_probe.probe(runner('rtx4050_laptop_win.txt'))
+    assert p['backend'] == 'cpu' and 'PyTorch is not installed' in p['errors'][-1]
+
+
+def test_nvidia_smi_found_in_windows_locations(monkeypatch):
+    monkeypatch.setattr(gpu_probe.shutil, 'which', lambda name: None)
+    monkeypatch.setattr(gpu_probe.platform, 'system', lambda: 'Windows')
+    monkeypatch.setattr(gpu_probe.os.path, 'isfile', lambda p: p == gpu_probe.WINDOWS_SMI[1])
+    assert gpu_probe.nvidia_smi() == gpu_probe.WINDOWS_SMI[1]
+
+
+def test_parse_driver_cuda():
+    assert gpu_probe.parse_driver_cuda((FIX / 'banner_win_cuda127.txt').read_text()) == '12.7'
+    assert gpu_probe.parse_driver_cuda('no banner') is None

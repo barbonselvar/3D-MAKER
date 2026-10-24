@@ -12,7 +12,7 @@ FIX = Path(__file__).parent / 'fixtures'
 
 def run(name, **kw):
     kw.setdefault('face_budget', 200_000)
-    kw.setdefault('texture_size', 64)
+    kw.setdefault('texture_size', 1024)
     kw.setdefault('blender', '')
     return validate.validate_glb((FIX / name).read_bytes(), **kw)
 
@@ -35,8 +35,8 @@ def test_good_pbr_fixture_passes():
 
 
 def test_textured_fixture_needs_pbr_flag():
-    assert not run('textured_cube.glb').passed  # no metallic-roughness texture
-    assert run('textured_cube.glb', require_pbr=False).passed
+    assert not run('textured_cube.glb', texture_size=64).passed  # no metallic-roughness texture
+    assert run('textured_cube.glb', texture_size=64, require_pbr=False).passed
 
 
 @pytest.mark.parametrize('name,gate,phrase', [

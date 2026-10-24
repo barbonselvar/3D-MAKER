@@ -94,7 +94,7 @@ def build_glb(positions, faces, uvs=None, textures=None, mime='image/png', exten
 
 
 def crafted_fixtures() -> dict[str, bytes]:
-    pbr = {'baseColorTexture': png(64), 'metallicRoughnessTexture': png(64, (0, 128, 255))}
+    pbr = {'baseColorTexture': png(1024), 'metallicRoughnessTexture': png(1024, (0, 128, 255))}
     v, f, uv = cube_arrays()
     nan_v = v.copy()
     nan_v[3] = [np.nan, 0, 0]

@@ -18,10 +18,6 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title='3D Maker', version='0.1.0')
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
 
-@app.get('/')
-def index():
-    return FileResponse(ROOT / 'static' / 'index.html')
-
 @app.get('/api/health')
 def health():
     return {'status': 'ok', 'modes': ['silhouette'], 'ai_enabled': False, 'blender_available': bool(os.environ.get('BLENDER_BIN'))}
@@ -90,3 +86,8 @@ def download(identifier: str, filename: str):
     if not path.is_file():
         raise HTTPException(404)
     return FileResponse(path, filename=filename if filename != 'model.glb' else '3d-maker.glb')
+
+
+# Serve the studio (index.html plus ./vendor and ./js modules) at the site root.
+# Mounted last so every /api route registered above takes precedence.
+app.mount('/', StaticFiles(directory=ROOT / 'static', html=True), name='site')

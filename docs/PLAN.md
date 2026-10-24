@@ -128,7 +128,8 @@ any public exposure.
 | Memory options: 512–2048 px textures, low-VRAM chunked grid query, bf16, CPU background removal, sequential jobs, idle offload | Done; chunking equivalence (to floating-point rounding) tested with NumPy stand-ins | `tests/test_sf3d_adapter.py` |
 | Windows probe (nvidia-smi locations, `[N/A]`, driver CUDA vs PyTorch CUDA) | Done (synthetic outputs) | `tests/test_gpu_probe.py` |
 | One-command local stack | Done | `tests/test_local_stack.py` |
-| `scripts/windows/setup.ps1`, `start.ps1` | Written; parse/lint clean; check phase executed with simulated tools and on Windows CI; **full install not run on a real PC** | `tests/test_windows_scripts.py`, CI `windows` job |
+| `scripts/windows/setup.ps1`, `start.ps1` | Written; parse/lint clean; check phase executed with simulated tools; under Windows PowerShell 5.1 on a real Windows runner it stops cleanly with the missing-driver fix; **full install not run on a GPU PC** | `tests/test_windows_scripts.py`, CI `windows` job |
+| Native Windows CI (no GPU) | Windows lock installed; 227 passed, 10 skipped (POSIX-only and real-Blender tests), including real U²-Net on the CPU | CI `windows` job |
 | Windows dependency lock (CPython 3.11, win_amd64) | Resolved; test suite passes with the same pins | `worker/windows/constraints-win-py311.txt` |
 | CPU background removal (U²-Net) | **Really run** | `tests/test_segment_cleanup.py::test_rembg_u2net_real_on_cpu` |
 | TRELLIS.2 | Unchanged; shows Unsupported on a 6 GB GPU | — |

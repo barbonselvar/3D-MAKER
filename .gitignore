@@ -5,3 +5,7 @@ __pycache__/
 output/
 .DS_Store
 var/
+# Created by scripts/windows/setup.ps1 and local tooling
+.venv*/
+third_party/
+out/

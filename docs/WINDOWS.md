@@ -9,9 +9,9 @@ map) as a GLB file that Blender can open.
 
 | Part | Status |
 | --- | --- |
-| Setup and start scripts | Parse cleanly and pass PSScriptAnalyzer, including PowerShell 5.1 syntax rules. The check phase runs in CI on real Windows (no GPU) and on Linux with simulated tools. **The full install has not been run on a real Windows PC.** |
-| Dependency set (Python 3.11, 64-bit) | Every pinned package has a Windows wheel; the full test suite passes with these exact versions (Linux, Python 3.11, and the Windows CI job) |
-| Background removal (U²-Net on the CPU) | **Really run** in tests, on Linux and on the Windows CI job |
+| Setup and start scripts | Parse cleanly and pass PSScriptAnalyzer, including PowerShell 5.1 syntax rules. Under Windows PowerShell 5.1 on a real Windows machine without an NVIDIA driver, setup stops at step 1 with the FAIL and Fix message. The full check phase also runs on Linux with simulated tools. **The full install has not been run on a real GPU PC.** |
+| Dependency set (Python 3.11, 64-bit) | Installed on a real Windows machine (GitHub `windows-latest`, no GPU), where the full test suite passed: 227 passed, 10 skipped (POSIX-only and real-Blender tests) |
+| Background removal (U²-Net on the CPU) | **Really run** in tests, on Linux and on that Windows machine |
 | Validation, job API, progress, cancel, downloads, UI | Tested end to end with a **mock** engine |
 | Stable Fast 3D on a GPU | **NOT VERIFIED.** No GPU was available while this was built. Whether it fits in 6 GB is decided on your PC by the self-test. Nothing is assumed. |
 | Compiling SF3D's two C++/CUDA extensions on Windows | **NOT VERIFIED.** Upstream calls Windows support "experimental". |

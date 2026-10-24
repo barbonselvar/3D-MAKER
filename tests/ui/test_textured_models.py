@@ -48,8 +48,27 @@ def test_colour_tool_still_works_for_local_modes(page):
     assert any(f and f[:3] != [1, 1, 1] for f in factors)
 
 
-@pytest.mark.xfail(strict=True, reason='fixed by P0-02: GLB export re-serialises the rescaled scene')
 def test_imported_glb_downloads_original_bytes(page):
     import_fixture(page)
     data = download(page, 'glb')
     assert hashlib.sha256(data).hexdigest() == hashlib.sha256(FIXTURE.read_bytes()).hexdigest()
+
+
+def obj_vertices(text: str):
+    return [tuple(map(float, line.split()[1:4])) for line in text.splitlines() if line.startswith('v ')]
+
+
+def test_derived_export_keeps_original_units_and_origin(page):
+    # The fixture cube spans x 2.5..3.5 (1 m, offset from origin); the viewer rescales it to 2.6 units.
+    import_fixture(page)
+    xs = [v[0] for v in obj_vertices(download(page, 'obj').decode())]
+    assert min(xs) == pytest.approx(2.5, abs=1e-4)
+    assert max(xs) == pytest.approx(3.5, abs=1e-4)
+
+
+def test_viewer_fit_is_restored_after_export(page):
+    import_fixture(page)
+    before = page.evaluate("document.querySelector('#stats').textContent")
+    download(page, 'stl')
+    assert page.evaluate("document.querySelector('#stats').textContent") == before
+    assert page.errors == []

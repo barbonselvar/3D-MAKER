@@ -52,6 +52,7 @@ def browser():
 def page(browser, live_server):
     context = browser.new_context(accept_downloads=True, viewport={'width': 1280, 'height': 900})
     pg = context.new_page()
+    pg.set_default_timeout(10_000)
     pg.errors = []
     pg.on('pageerror', lambda e: pg.errors.append(str(e)))
     pg.route('**/*', lambda route: route.continue_() if route.request.url.startswith(live_server) else route.abort())

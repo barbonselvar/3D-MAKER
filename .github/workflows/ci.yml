@@ -22,6 +22,8 @@ jobs:
         with:
           node-version: '22'
       - run: pip install -r requirements-dev.txt
+      - name: Worker Node tools (glTF-Validator)
+        run: npm ci --prefix worker --no-audit --no-fund
       - name: Lint
         run: ruff check .
       - name: JS syntax

@@ -90,3 +90,30 @@ quad retopology, rigging, text-to-3D (out of scope).
 4. **Ninja reference image**: needed in `eval/inputs/`.
 5. **External GPU budget and provider account**: needed before any P2 work touches a paid service.
 6. **Blender**: not installed here; Blender import checks (V2/V7) are written but run only where `BLENDER_BIN` exists.
+
+## 7. Status (2026-10-24, branch `claude/3d-maker-blueprint-impl-vhvzu4`)
+
+| Ticket | Status | Evidence |
+| --- | --- | --- |
+| P0-01 colour tool | Done | `tests/ui/test_textured_models.py` |
+| P0-02 original GLB bytes | Done | SHA-256 of download = fixture |
+| P0-03 pinned/vendored JS | Done | `tests/test_vendor.py`, UI suite runs offline |
+| P0-04 dead code, leftover file | Done, **except LICENSE (owner decision)** | ruff clean |
+| P0-05 tests + CI | Done | GitHub Actions green |
+| P0-06 output TTL | Done | fake-clock test |
+| P1-01 GPU probe + gpu-targets | Done (synthetic outputs; no real GPU) | `tests/test_gpu_probe.py` |
+| P1-02 worker image | **Written, NOT BUILT** (no Docker daemon/GPU) | `worker/Dockerfile`, `worker/README.md` |
+| P1-03 segmenter | Rules done and tested; model **NOT RUN** | `tests/test_segment_cleanup.py` |
+| P1-04 TRELLIS.2 adapter | **Written, NOT VERIFIED**; wiring tested against a mock of upstream | `tests/test_trellis2_adapter.py` |
+| P1-05 DB, state machine, job routes | Done | `tests/test_jobs_state_machine.py`, `tests/test_jobs_api.py` |
+| P1-06 storage + uploads | Done | `tests/test_uploads.py`, `tests/test_storage.py` |
+| P1-07 worker loop + internal API | Done (mock engine) | `tests/test_worker_integration.py` |
+| P1-08 validation | V1/V3/V4 done; V2 wrapper tested with mock Blender | `tests/test_validate.py` |
+| P1-09 ES modules | Done | UI suite passes before and after |
+| P1-10 Generate panel | UI done and tested against the mock worker; **GPU end-to-end pending** | `tests/ui/test_generate_panel.py` |
+| P1-11 evaluation baseline | **Not started: needs GPU, Blender, ninja image** | — |
+
+Next, in order: (1) on a ≥ 24 GB NVIDIA host, follow `worker/README.md` "Verify on a GPU host",
+(2) P1-11 harness and baseline, (3) P3 gallery + two-button homepage (no GPU needed),
+(4) P2 External GPU only after owner approval of provider and budget, (5) P4 hardening before
+any public exposure.

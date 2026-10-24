@@ -1,15 +1,15 @@
-from pathlib import Path
-from uuid import uuid4
 import io
 import os
-import subprocess
 import tempfile
+from pathlib import Path
+from uuid import uuid4
+
 import numpy as np
-from PIL import Image
 import trimesh
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from shapely.geometry import Polygon
 
 ROOT = Path(__file__).resolve().parent
@@ -40,7 +40,7 @@ async def generate(image: UploadFile = File(...), depth: float = Form(0.25)):
         im.thumbnail((512, 512))
         rgba = im.convert('RGBA')
     except Exception:
-        raise HTTPException(400, 'Upload a valid PNG, JPG, or WEBP image')
+        raise HTTPException(400, 'Upload a valid PNG, JPG, or WEBP image') from None
     arr = np.asarray(rgba)
     alpha = arr[:, :, 3]
     # Prefer an alpha mask. Otherwise separate the object from the corner background color.

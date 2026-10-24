@@ -15,6 +15,7 @@ from PIL import Image
 from shapely.geometry import Polygon
 
 from .api import files as files_api
+from .api import gpu as gpu_api
 from .api import uploads as uploads_api
 from .core.config import Settings
 from .core.context import Context
@@ -127,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(legacy)
     app.include_router(uploads_api.router)
     app.include_router(files_api.router)
+    app.include_router(gpu_api.router)
     app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
     # Serve the studio (index.html plus ./vendor and ./js modules) at the site root.
     # Mounted last so every /api route registered above takes precedence.

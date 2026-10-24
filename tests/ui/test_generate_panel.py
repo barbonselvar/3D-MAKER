@@ -16,6 +16,7 @@ from worker.main import ApiClient, Worker
 
 from ..helpers import L40S_PROBE
 from ..stub_engine import FIX, StubEngine
+from ..test_selftest import RTX4050, FakeGpuEngine
 
 pytestmark = pytest.mark.ui
 TOKEN = 'ui-worker-token-0123456789'
@@ -77,14 +78,17 @@ def test_internal_card_disabled_with_reason_when_no_worker(page, ctx):
 def test_internal_gpu_job_end_to_end(page, ctx):
     worker = make_worker(ctx)
     open_panel(page)
-    assert 'NVIDIA L40S' in page.text_content('#int-status') and 'TRELLIS.2-4B (Full quality)' in page.text_content('#int-status')
+    assert 'NVIDIA L40S' in page.text_content('#int-status')
+    assert 'TRELLIS.2-4B · Full quality' in page.text_content('#int-engines li[data-engine="trellis2-4b"]')
+    assert page.text_content('#int-engines li[data-engine="trellis2-4b"] .chip') == 'Ready'
+    assert page.eval_on_selector('#int-texture', 'el => el.value') == '2048'
     page.click('#start-internal')
     wait_for_job(page, ctx)
     page.wait_for_function("document.querySelector('#status').textContent.startsWith('Queued')")
     assert page.is_visible('#cancelai') and page.is_disabled('#generate')
     t = threading.Thread(target=worker.run_once)
     t.start()
-    page.wait_for_function("document.querySelector('#stats').textContent.includes('Internal GPU')", timeout=20_000)
+    page.wait_for_function("document.querySelector('#stats').textContent.includes('Local GPU')", timeout=20_000)
     t.join()
     assert 'estimated' in page.text_content('#status')
     assert page.eval_on_selector_all('#jobstages li.done', 'els => els.length') == 7
@@ -132,3 +136,62 @@ def test_panel_is_a_bottom_sheet_on_mobile(browser, live_server, ctx):
         assert page.locator(sel).bounding_box()['height'] >= 44
     assert page.evaluate('document.documentElement.scrollWidth') <= 390
     context.close()
+
+
+def make_reporting_worker(ctx, engine):
+    """Worker that self-tests (MOCK FakeGpuEngine) and reports statuses, like the Windows local worker."""
+    client = TestClient(create_internal_app(context=ctx), headers={'Authorization': f'Bearer {TOKEN}'})
+    reports = {'sf3d': {'installed': True, 'problem': None, 'selftest': None},
+               'trellis2-4b': {'installed': False, 'problem': 'TRELLIS.2 is not installed (needs a 24 GB GPU).',
+                               'selftest': None}}
+    worker = Worker(ApiClient(client), {'sf3d': engine}, RTX4050, heartbeat_interval=3600, reports=reports)
+    return worker
+
+
+def test_rtx4050_statuses_and_texture_cap(page, ctx, tmp_path, monkeypatch):
+    monkeypatch.setenv('MAKER_WORKER_STATE', str(tmp_path))
+    worker = make_reporting_worker(ctx, FakeGpuEngine(max_ok=512, low_needed=True))
+    worker.api.heartbeat(worker.probe, worker.engine_ids)  # before the self-test
+    open_panel(page)
+    assert page.text_content('#int-engines li[data-engine="sf3d"] .chip') == 'Not tested yet'
+    assert page.is_disabled('#start-internal')
+    page.click('#genclose')
+    worker.run_selftests(log_fn=lambda m: None)
+    worker.api.heartbeat(worker.probe, worker.engine_ids)
+    page.click('#generate')
+    page.wait_for_function("document.querySelector('#int-engines li[data-engine=\"sf3d\"] .chip')?.textContent === 'Ready'")
+    chips = {li: page.text_content(f'#int-engines li[data-engine="{li}"] .chip') for li in ('trellis2-4b', 'sf3d')}
+    assert chips == {'trellis2-4b': 'Unsupported', 'sf3d': 'Ready'}
+    assert 'needs at least 24 GB' in page.text_content('#int-engines li[data-engine="trellis2-4b"]')
+    assert 'textures up to 512 px' in page.text_content('#int-engines li[data-engine="sf3d"]')
+    assert page.eval_on_selector_all('#int-texture option', 'os => os.map(o => o.value)') == ['512']
+    assert 'RTX 4050' in page.text_content('#int-status')
+    page.click('#start-internal')
+    wait_for_job(page, ctx)
+    t = threading.Thread(target=worker.run_once)
+    t.start()
+    page.wait_for_function("document.querySelector('#stats').textContent.includes('Local GPU')", timeout=20_000)
+    t.join()
+    stats = page.text_content('#stats')
+    assert 'sf3d' in stats and '512 px' in stats and 'Powered by Stability AI' in stats
+
+
+def test_out_of_memory_status_shown(page, ctx, tmp_path, monkeypatch):
+    monkeypatch.setenv('MAKER_WORKER_STATE', str(tmp_path))
+    worker = make_reporting_worker(ctx, FakeGpuEngine(max_ok=128))
+    worker.run_selftests(log_fn=lambda m: None)
+    worker.api.heartbeat(worker.probe, worker.engine_ids)
+    open_panel(page)
+    assert page.text_content('#int-engines li[data-engine="sf3d"] .chip') == 'Out of memory'
+    assert 'Ran out of GPU memory' in page.text_content('#int-engines li[data-engine="sf3d"]')
+    assert page.is_disabled('#start-internal')
+
+
+def test_not_installed_status_shown(page, ctx):
+    client = TestClient(create_internal_app(context=ctx), headers={'Authorization': f'Bearer {TOKEN}'})
+    reports = {'sf3d': {'installed': False, 'problem': 'SF3D weights are not downloaded.', 'selftest': None}}
+    worker = Worker(ApiClient(client), {}, RTX4050, heartbeat_interval=3600, reports=reports)
+    worker.api.heartbeat(worker.probe, worker.engine_ids)
+    open_panel(page)
+    assert page.text_content('#int-engines li[data-engine="sf3d"] .chip') == 'Not installed'
+    assert 'weights are not downloaded' in page.text_content('#int-engines li[data-engine="sf3d"]')

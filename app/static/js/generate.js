@@ -34,23 +34,74 @@ function setCard(card, enabled) {
   card.setAttribute('aria-disabled', String(!enabled));
 }
 
+const QUALITY = { full: 'Full quality', preview: 'Fast, lower detail', untextured: 'Untextured' };
+const ATTRIBUTION = { sf3d: 'Powered by Stability AI' }; // required by the Stability AI Community License
+
+function engineFacts(e) {
+  const facts = [];
+  if (e.max_texture_size) facts.push(`textures up to ${e.max_texture_size} px`);
+  if (e.peak_vram_mb) facts.push(`${(e.peak_vram_mb / 1024).toFixed(1)} GB peak VRAM`);
+  if (e.seconds) facts.push(`~${Math.round(e.seconds)} s in the self-test`);
+  return facts.join(' · ');
+}
+
+function renderTextureOptions() {
+  const t = targets?.find((x) => x.id === 'internal');
+  const engine = t?.engines.find((e) => e.id === selectedEngine());
+  const select = $('#int-texture');
+  select.replaceChildren();
+  if (!engine) return;
+  const max = engine.max_texture_size;
+  const sizes = (max ? [512, 1024, 2048] : [1024, 2048, 4096]).filter((n) => !max || n <= max);
+  for (const n of sizes) select.append(new Option(`${n} px${n === 512 ? ' · least memory' : ''}`, String(n)));
+  select.value = String(max ? sizes[sizes.length - 1] : 2048);
+}
+
+function selectedEngine() {
+  return document.querySelector('input[name=engine]:checked')?.value || null;
+}
+
 function renderInternal() {
   const status = $('#int-status');
   const button = $('#start-internal');
+  const list = $('#int-engines');
   const t = targets?.find((x) => x.id === 'internal');
   status.classList.toggle('bad', !t?.available);
   button.disabled = !t?.available;
   setCard($('#card-internal'), !!t?.available);
+  list.replaceChildren();
+  $('#int-options').hidden = !t?.available;
   if (!targets) {
-    status.textContent = 'The 3D Maker server is not reachable, so no internal GPU can be used. Start it with: uvicorn app.main:app';
-  } else if (!t.available) {
-    status.textContent = t.reason;
-  } else {
-    const d = t.device || {};
-    const e = t.engines[0];
-    const quality = { full: 'Full quality', preview: 'Preview quality', untextured: 'Untextured' }[e.quality] || e.quality;
-    status.textContent = `${d.name || 'GPU'} · ${gb(d.vram_free_mb)} free${d.driver ? ' · driver ' + d.driver : ''}. Runs ${e.label} (${quality}).`;
+    status.textContent = 'The 3D Maker server is not reachable, so no local GPU can be used. Start it with scripts\\windows\\start.ps1 or: python -m app.local_stack';
+    return;
   }
+  const d = t.device;
+  status.textContent = d
+    ? `${d.name || 'GPU'} · ${gb(d.vram_total_mb)}${d.vram_free_mb != null ? ' (' + gb(d.vram_free_mb) + ' free)' : ''}${d.driver ? ' · driver ' + d.driver : ''}`
+    : t.reason;
+  let first = null;
+  for (const e of t.engine_status || []) {
+    const li = document.createElement('li');
+    li.className = 'engine';
+    li.dataset.engine = e.id;
+    const head = document.createElement('label');
+    const radio = Object.assign(document.createElement('input'), { type: 'radio', name: 'engine', value: e.id, disabled: e.status !== 'ready' });
+    radio.onchange = renderTextureOptions;
+    const name = document.createElement('span');
+    name.textContent = `${e.label} · ${QUALITY[e.quality] || e.quality}`;
+    const chip = document.createElement('span');
+    chip.className = `chip ${e.status}`;
+    chip.textContent = e.status_label;
+    head.append(radio, name, chip);
+    const detail = document.createElement('small');
+    detail.textContent = e.status === 'ready' ? engineFacts(e) : e.reason || '';
+    li.append(head, detail);
+    list.append(li);
+    if (e.status === 'ready' && !first) first = radio;
+  }
+  if (first) first.checked = true;
+  if (!t.available && t.device) status.textContent += '. ' + 'No engine is ready on this GPU yet (see below).';
+  renderTextureOptions();
 }
 
 function selectedProvider() {
@@ -94,7 +145,7 @@ function renderExternal() {
 
 export async function openPanel() {
   const dialog = $('#genpanel');
-  $('#int-status').textContent = 'Checking for a GPU worker…';
+  $('#int-status').textContent = 'Checking the local GPU…';
   $('#start-internal').disabled = true;
   if (!dialog.open) dialog.showModal();
   try {
@@ -200,7 +251,8 @@ async function loadResult(job) {
   const bytes = await response.arrayBuffer();
   const object = await loadGLB(bytes.slice(0));
   state.name = state.sourceName;
-  replaceObject(object, state.name, `${model.manifest?.engine?.id || job.engine} · Internal GPU · seed ${job.params.seed}`, bytes);
+  const credit = ATTRIBUTION[job.engine] ? ` · ${ATTRIBUTION[job.engine]}` : '';
+  replaceObject(object, state.name, `${job.engine} · Local GPU · ${job.params.texture_size} px · seed ${job.params.seed}${credit}`, bytes);
   setStatus('Model ready. Generated from one image: the back and hidden parts are estimated.');
 }
 
@@ -229,7 +281,8 @@ async function track(jobId, first) {
 }
 
 async function runInternal() {
-  const engine = targets.find((t) => t.id === 'internal').engines[0].id;
+  const engine = selectedEngine();
+  const textureSize = +$('#int-texture').value;
   setBusy(true, cancelInternal);
   showStages(null);
   try {
@@ -240,7 +293,8 @@ async function runInternal() {
     setStatus('Creating job…');
     const created = await api('/api/v1/jobs', {
       method: 'POST',
-      json: { upload_id: upload.upload_id, target: 'internal', engine, params: { resolution: +$('#quality').value } },
+      json: { upload_id: upload.upload_id, target: 'internal', engine,
+        params: { resolution: +$('#quality').value, texture_size: textureSize } },
     });
     await track(created.job_id, created.job);
   } catch (e) {

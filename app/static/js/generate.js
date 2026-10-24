@@ -16,6 +16,7 @@ const PROVIDER_NAMES = { 'external:modal': 'Dedicated GPU provider', 'external:h
 const STATIC_HF_DEMO = { id: 'external:hf-demo', kind: 'external', available: true, price_estimate_usd: 0,
   notes: 'Shared Hugging Face Space: free quota, queues, no SLA; the image leaves your device.' };
 const JOB_KEY = '3dmaker.activeJob';
+const GUIDE_URL = 'https://github.com/barbonselvar/3D-MAKER/blob/main/docs/WINDOWS.md';
 
 let targets = null;
 let currentJob = null;
@@ -72,7 +73,14 @@ function renderInternal() {
   list.replaceChildren();
   $('#int-options').hidden = !t?.available;
   if (!targets) {
-    status.textContent = 'The 3D Maker server is not reachable, so no local GPU can be used. Start it with scripts\\windows\\start.ps1 or: python -m app.local_stack';
+    // Public website (static hosting) or the local server is not running. A public HTTPS page cannot reach a
+    // visitor's 127.0.0.1 worker (browsers block it), so point to the locally installed studio instead.
+    status.textContent = 'Local GPU runs in 3D-MAKER installed on your own computer, not on this website. '
+      + 'Install it with the Windows guide, then open http://127.0.0.1:8000 for Local GPU generation. ';
+    const guide = Object.assign(document.createElement('a'), {
+      href: GUIDE_URL, target: '_blank', rel: 'noopener', textContent: 'Windows setup guide ↗' });
+    guide.className = 'guide-link';
+    status.append(guide);
     return;
   }
   const d = t.device;

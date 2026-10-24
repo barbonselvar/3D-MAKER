@@ -1,6 +1,8 @@
 import io
 import os
+import shutil
 import tempfile
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,17 +17,40 @@ from shapely.geometry import Polygon
 ROOT = Path(__file__).resolve().parent
 OUTPUT = Path(os.environ.get('MAKER_OUTPUT', tempfile.gettempdir() + '/3d-maker-output'))
 OUTPUT.mkdir(parents=True, exist_ok=True)
+OUTPUT_TTL_SECONDS = 24 * 3600
 app = FastAPI(title='3D Maker', version='0.1.0')
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
 
+
+
+def cleanup_outputs(now: float | None = None, ttl: float = OUTPUT_TTL_SECONDS) -> int:
+    """Delete /api/generate output folders older than ttl seconds. Returns how many were removed."""
+    now = time.time() if now is None else now
+    removed = 0
+    for folder in OUTPUT.iterdir():
+        try:
+            if folder.is_dir() and now - folder.stat().st_mtime > ttl:
+                shutil.rmtree(folder)
+                removed += 1
+        except FileNotFoundError:
+            pass  # removed concurrently
+    return removed
+
+
+def blender_available() -> bool:
+    binary = os.environ.get('BLENDER_BIN')
+    return bool(binary) and shutil.which(binary) is not None
+
+
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'modes': ['silhouette'], 'ai_enabled': False, 'blender_available': bool(os.environ.get('BLENDER_BIN'))}
+    return {'status': 'ok', 'modes': ['silhouette'], 'ai_enabled': False, 'blender_available': blender_available()}
 
 @app.post('/api/generate')
 async def generate(image: UploadFile = File(...), depth: float = Form(0.25)):
     if not 0.02 <= depth <= 2:
         raise HTTPException(400, 'Depth must be between 0.02 and 2')
+    cleanup_outputs()
     raw = await image.read(12 * 1024 * 1024 + 1)
     if len(raw) > 12 * 1024 * 1024:
         raise HTTPException(413, 'Image too large (12 MB maximum)')

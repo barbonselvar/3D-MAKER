@@ -117,3 +117,21 @@ Next, in order: (1) on a ≥ 24 GB NVIDIA host, follow `worker/README.md` "Verif
 (2) P1-11 harness and baseline, (3) P3 gallery + two-button homepage (no GPU needed),
 (4) P2 External GPU only after owner approval of provider and budget, (5) P4 hardening before
 any public exposure.
+
+### Native Windows local GPU (requested 2026-10-24)
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Stable Fast 3D engine (`worker/engines/sf3d.py`) | Written against SF3D `ff21fc4`; wiring tested against a mock of upstream; **NOT VERIFIED on a GPU** | `tests/test_sf3d_adapter.py` |
+| Engine statuses: Ready, Unsupported, Out of memory, Not installed (plus Not tested yet, Self-test failed) | Done | `tests/test_gpu_probe.py`, `tests/ui/test_generate_panel.py` |
+| GPU self-test on the user's machine; texture limit; out-of-memory step-down | Done (mock engine) | `tests/test_selftest.py` |
+| Memory options: 512–2048 px textures, low-VRAM chunked grid query, bf16, CPU background removal, sequential jobs, idle offload | Done; chunking equivalence tested with NumPy stand-ins | `tests/test_sf3d_adapter.py` |
+| Windows probe (nvidia-smi locations, `[N/A]`, driver CUDA vs PyTorch CUDA) | Done (synthetic outputs) | `tests/test_gpu_probe.py` |
+| One-command local stack | Done | `tests/test_local_stack.py` |
+| `scripts/windows/setup.ps1`, `start.ps1` | Written; parse/lint clean; check phase executed with simulated tools and on Windows CI; **full install not run on a real PC** | `tests/test_windows_scripts.py`, CI `windows` job |
+| Windows dependency lock (CPython 3.11, win_amd64) | Resolved; test suite passes with the same pins | `worker/windows/constraints-win-py311.txt` |
+| CPU background removal (U²-Net) | **Really run** | `tests/test_segment_cleanup.py::test_rembg_u2net_real_on_cpu` |
+| TRELLIS.2 | Unchanged; shows Unsupported on a 6 GB GPU | — |
+
+Next: the owner runs `docs/WINDOWS.md` → "Verify on your PC" on the RTX 4050 laptop and sends back
+`probe.json`, `selftest.json` and one model manifest.

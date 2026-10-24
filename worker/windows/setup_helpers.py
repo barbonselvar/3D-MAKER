@@ -64,7 +64,8 @@ def cmd_init_env() -> int:
     path = write_env({'MAKER_SECRET_KEY': current.get('MAKER_SECRET_KEY') or secrets.token_hex(32),
                       'MAKER_DATA': current.get('MAKER_DATA') or str(state_dir() / 'data'),
                       'WORKER_ENGINES': current.get('WORKER_ENGINES') or 'sf3d',
-                      'SEGMENTER': current.get('SEGMENTER') or 'rembg-u2net'})
+                      'SEGMENTER': current.get('SEGMENTER') or 'rembg-u2net',
+                      'HF_HUB_DISABLE_TELEMETRY': '1'})
     return _out({'ok': True, 'env_file': str(path)})
 
 
@@ -114,7 +115,8 @@ def cmd_weights(revision: str | None) -> int:
         if _is_gated(e):
             return _out({'ok': False, 'error': GATED_HELP}, 2)
         return _out({'ok': False, 'error': f'Download failed: {type(e).__name__}: {str(e)[:300]}'}, 2)
-    write_env({'SF3D_WEIGHTS_REVISION': revision})
+    # Weights are now cached at a pinned revision: generation never needs to contact Hugging Face again.
+    write_env({'SF3D_WEIGHTS_REVISION': revision, 'HF_HUB_OFFLINE': '1'})
     return _out({'ok': True, 'revision': revision, 'files': {Path(p).name: os.path.getsize(p) for p in paths}})
 
 

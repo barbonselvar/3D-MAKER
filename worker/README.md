@@ -1,5 +1,9 @@
 # Internal GPU worker
 
+> **Windows PC with a smaller NVIDIA GPU (for example a 6 GB laptop)?** Use the native Windows setup with
+> Stable Fast 3D instead: [`docs/WINDOWS.md`](../docs/WINDOWS.md). This page covers the Linux/Docker worker
+> for TRELLIS.2 on GPUs with 24 GB or more.
+
 Runs image-to-3D jobs for the API: claims a job, segments the image, runs the engine, cleans the
 mesh, validates the GLB (gates V1–V4), and uploads the GLB plus `manifest.json`. It never
 produces a non-AI stand-in: every failure is reported with an error code.

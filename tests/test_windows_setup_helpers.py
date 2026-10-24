@@ -24,6 +24,7 @@ def test_init_env_creates_and_keeps_secret(capsys, state):
     first = sh.read_env()
     assert code == 0 and len(first['MAKER_SECRET_KEY']) == 64 and first['WORKER_ENGINES'] == 'sf3d'
     assert first['SEGMENTER'] == 'rembg-u2net' and first['MAKER_DATA'].endswith('data')
+    assert first['HF_HUB_DISABLE_TELEMETRY'] == '1'
     run(capsys, 'init-env')
     assert sh.read_env()['MAKER_SECRET_KEY'] == first['MAKER_SECRET_KEY']  # stable across re-runs
 
@@ -59,6 +60,7 @@ def test_weights_pins_revision_and_records_it(capsys, monkeypatch, tmp_path):
     assert files == [('stabilityai/stable-fast-3d', 'config.yaml', 'deadbeef'),
                      ('stabilityai/stable-fast-3d', 'model.safetensors', 'deadbeef')]
     assert sh.read_env()['SF3D_WEIGHTS_REVISION'] == 'deadbeef'
+    assert sh.read_env()['HF_HUB_OFFLINE'] == '1'  # runtime stays local after setup
     run(capsys, 'weights')
     assert files[-1][2] == 'deadbeef'  # re-runs keep the recorded revision
 

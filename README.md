@@ -5,7 +5,8 @@ image-to-3D engine on a GPU you choose, shows progress, and loads the validated 
 interactive viewer. Local, non-AI tools (table builder, silhouette extrusion, GLB import) remain
 available and are always labelled "not AI".
 
-Plan and decisions: [`docs/PLAN.md`](docs/PLAN.md). GPU worker: [`worker/README.md`](worker/README.md).
+Plan and decisions: [`docs/PLAN.md`](docs/PLAN.md). **Windows PC with an NVIDIA GPU: [`docs/WINDOWS.md`](docs/WINDOWS.md).**
+Linux/Docker GPU worker (TRELLIS.2, 24 GB+): [`worker/README.md`](worker/README.md).
 
 ## How it works
 
@@ -18,7 +19,10 @@ GPU worker (worker.main) ──► worker API (app.internal, /internal/v1, priva
 - **Generate** (AI mode) opens a choice of **Internal GPU** — a worker you run on your own NVIDIA
   GPU — or **External GPU**. Nothing is ever rerouted between them, and a failed job never
   falls back to a non-AI mesh.
-- The primary engine is **TRELLIS.2-4B** (MIT). It needs an NVIDIA GPU with at least 24 GB.
+- Engines: **Stable Fast 3D** for local GPUs, including 6 GB laptop GPUs on native Windows
+  (Stability AI Community License), and **TRELLIS.2-4B** (MIT) for GPUs with 24 GB or more.
+  Which engine works on your GPU is never assumed: the worker self-tests on the real hardware and the
+  Generate panel shows **Ready**, **Unsupported**, **Out of memory** or **Not installed**, with the reason.
 - Every model passes validation gates before it can be downloaded: Khronos glTF-Validator,
   mesh sanity, PBR textures and UVs, and a Blender import in the worker image.
 - Each model has a `manifest.json` that records the input hash, engine commit and weights
@@ -30,7 +34,17 @@ External GPU today: the **Hugging Face public demo** of TRELLIS.2 runs from your
 consent. It is shared and free, with quotas and no SLA, and your image leaves your device. A
 dedicated paid provider (Phase 2) is shown as "not configured". No paid service is used.
 
-## Run it
+## Run it on Windows with your own GPU (no WSL, no Docker, no cloud)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1   # once
+powershell -ExecutionPolicy Bypass -File scripts\windows\start.ps1   # every time
+```
+
+See [`docs/WINDOWS.md`](docs/WINDOWS.md) for prerequisites, the GPU self-test, troubleshooting and licences.
+On Linux the same all-in-one launcher is `python -m app.local_stack`.
+
+## Run it (development)
 
 Requires Python 3.10+ and Node.js 18+ (for the glTF validator).
 
@@ -90,13 +104,20 @@ Chromium.
 - The worker loop end to end, using a **mock engine** that returns a fixture GLB: upload → job →
   worker → validation → signed download, plus cancel, errors and isolation.
 - The Generate panel in the browser against that mock worker.
-- The TRELLIS.2 adapter's wiring, against a **mock** of the upstream API.
+- The TRELLIS.2 and Stable Fast 3D adapters' wiring, against **mocks** of the upstream APIs.
+- The GPU self-test ladder, its cache and out-of-memory step-down, with a **mock** engine.
+- The one-command local stack (`app.local_stack`) on real localhost ports, with a **mock** engine.
+- **Real** background removal (rembg U²-Net on the CPU), when rembg is installed.
+- The Windows scripts: parsing, PSScriptAnalyzer (including PowerShell 5.1 syntax), and the check
+  phase with simulated tools. A Windows CI job (no GPU) runs the whole suite on Python 3.11 with the
+  exact Windows dependency pins.
 - The Hugging Face demo flow, against a **mock** gradio client.
 
 **Not tested** (needs hardware or access this project has not had yet):
 
-- **Real AI inference.** No NVIDIA GPU with 24 GB or more has been available. The TRELLIS.2
-  adapter and the worker Docker image are written and pinned, but neither has been run or built.
+- **Real AI inference on a GPU.** Neither Stable Fast 3D nor TRELLIS.2 has run here (no GPU). The
+  Windows install beyond its checks, compiling SF3D's extensions, and whether SF3D fits in 6 GB must
+  be verified on the target PC (`docs/WINDOWS.md` → "Verify on your PC").
 - A real Blender import (gate V2), and the BiRefNet segmenter.
 - The live Hugging Face Space (unreachable from the development environment).
 - The evaluation set and the ninja acceptance test (P1-11).

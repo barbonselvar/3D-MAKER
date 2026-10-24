@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements-dev.txt
+      - name: Worker Node tools (glTF-Validator)
+        run: npm ci --prefix worker --no-audit --no-fund
+      - name: Lint
+        run: ruff check .
+      - name: JS syntax
+        run: python scripts/check_js.py
+      - name: Browser for UI tests
+        run: python -m playwright install --with-deps chromium
+      - name: Tests
+        run: pytest -q
+
+  windows:
+    # Native Windows, no GPU (hosted runners have none): proves the Python/Node side, the exact Windows
+    # dependency pins on Python 3.11, the real CPU background remover, and setup.ps1 under PowerShell 5.1.
+    # Real GPU inference is NOT exercised here; see docs/WINDOWS.md "Verify on your PC".
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the Windows lock (PyTorch CPU build from PyPI)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c worker/windows/constraints-win-py311.txt -r requirements.txt -r worker/requirements.txt -r worker/windows/requirements-sf3d.txt
+          pip install pytest httpx ruff playwright==1.63.0
+      - name: Worker Node tools (glTF-Validator)
+        run: npm ci --prefix worker --no-audit --no-fund
+      - name: Browser for UI tests
+        run: python -m playwright install chromium
+      - name: JS syntax
+        run: python scripts/check_js.py
+      - name: Tests
+        run: python -m pytest -q
+      - name: GPU probe on a machine without an NVIDIA GPU
+        run: python -m worker.gpu_probe
+      - name: setup.ps1 -CheckOnly stops cleanly without an NVIDIA driver (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          # The script is expected to stop (no NVIDIA driver here); under 'Stop', PowerShell 5.1 would turn the
+          # child's redirected stderr into a terminating error before we can check the message.
+          $ErrorActionPreference = 'Continue'
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\setup.ps1 -CheckOnly 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Output $out
+          if ($code -eq 0) { throw 'setup.ps1 -CheckOnly should fail without an NVIDIA driver' }
+          if ($out -notmatch 'nvidia-smi was not found') { throw 'expected the missing-driver message' }
+          Write-Output 'OK: setup.ps1 stopped with the missing-driver message.'
+          exit 0

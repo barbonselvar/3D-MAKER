@@ -1,0 +1,28 @@
+# Exact versions for the GPU worker image (worker/Dockerfile). NOT VERIFIED on a GPU yet.
+# Resolved from PyPI on 2026-10-24: newest release that supports Python 3.10 and was published
+# on or before 2026-06-05 (the pinned TRELLIS.2 commit date), within the majors our own worker
+# code is tested on (trimesh 4, Pillow 11). After the first successful GPU build, replace this
+# file with `pip freeze` from that image and archive the build log (blueprint P1-02).
+torch==2.6.0
+torchvision==0.21.0
+flash-attn==2.7.3
+transformers==5.10.2
+huggingface_hub==1.17.0
+safetensors==0.7.0
+kornia==0.8.2
+timm==1.0.27
+easydict==1.13
+imageio==2.37.3
+imageio-ffmpeg==0.6.0
+opencv-python-headless==4.13.0.92
+trimesh==4.12.2
+tqdm==4.67.3
+zstandard==0.25.0
+plyfile==1.1.4
+pandas==2.3.3
+lpips==0.1.4
+ninja==1.13.0
+numpy==2.2.6
+scipy==1.15.3
+httpx==0.28.1
+pillow==11.3.0

@@ -1,0 +1,12 @@
+c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4  vendor/gradio-client@2.7.1/LICENSE
+fdd776db8633354f118fe2908c980592283968737e6b91dc3aa86d648da5c3fd  vendor/gradio-client@2.7.1/index.min.js
+4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454  vendor/three@0.169.0/LICENSE
+0a3368c165eea773490aec7b77c22de70e3eac288503409256fdbf4d12578416  vendor/three@0.169.0/build/three.module.js
+80efaadea4f8a636a65fb0bd08bfef62f3d93a0bb94e2e7500f23176c5c07f4e  vendor/three@0.169.0/examples/jsm/controls/OrbitControls.js
+43044a7af5c1f8c30c6960126d5abe2f8f580d3372abf3cdcf6811249d477e79  vendor/three@0.169.0/examples/jsm/exporters/GLTFExporter.js
+66390a529d3c24246258cd62e255e4b3910624d9ccdf8a502ef7e49043672eaa  vendor/three@0.169.0/examples/jsm/exporters/OBJExporter.js
+b1bb48293a57004f8809417b54a4e88def69e3b5ad028ec66202f680e9c40992  vendor/three@0.169.0/examples/jsm/exporters/PLYExporter.js
+d64440877b68a973c9c2fe6a0474c9c9ab996a12f1fa835fbc4ffa29158f176b  vendor/three@0.169.0/examples/jsm/exporters/STLExporter.js
+6f1719dcc6a179d30273dfb0de07a8c898a7981f7b08e600b446387f5967371f  vendor/three@0.169.0/examples/jsm/loaders/GLTFLoader.js
+c25b7930e570e9ec56173cd3b866ec8d2e10016630db3937efb439daf1cedbf6  vendor/three@0.169.0/examples/jsm/utils/BufferGeometryUtils.js
+d9a427b2255891ac9f2bfa9c10e1eb2305abe79aaafb831583fc4a410307151c  vendor/three@0.169.0/examples/jsm/utils/TextureUtils.js

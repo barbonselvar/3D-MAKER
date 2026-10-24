@@ -1,0 +1,8 @@
+{
+  "name": "3d-maker-worker-tools",
+  "private": true,
+  "description": "Node tools used by the GPU worker (Khronos glTF-Validator).",
+  "dependencies": {
+    "gltf-validator": "2.0.0-dev.3.10"
+  }
+}

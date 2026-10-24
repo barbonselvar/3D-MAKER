@@ -1,35 +1,71 @@
+import asyncio
+import io
+import logging
+import os
+import shutil
+import tempfile
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
-import io
-import os
-import subprocess
-import tempfile
+
 import numpy as np
-from PIL import Image
 import trimesh
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from shapely.geometry import Polygon
+from starlette.concurrency import run_in_threadpool
+
+from .api import files as files_api
+from .api import gpu as gpu_api
+from .api import jobs as jobs_api
+from .api import models as models_api
+from .api import uploads as uploads_api
+from .core import jobs
+from .core.config import Settings
+from .core.context import Context
+from .core.errors import ApiError, api_error_handler, validation_error_handler
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT = Path(os.environ.get('MAKER_OUTPUT', tempfile.gettempdir() + '/3d-maker-output'))
 OUTPUT.mkdir(parents=True, exist_ok=True)
-app = FastAPI(title='3D Maker', version='0.1.0')
-app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
+OUTPUT_TTL_SECONDS = 24 * 3600
+# Original silhouette API (kept unchanged under /api; the AI pipeline lives under /api/v1).
+legacy = APIRouter()
 
-@app.get('/')
-def index():
-    return FileResponse(ROOT / 'static' / 'index.html')
 
-@app.get('/api/health')
+
+def cleanup_outputs(now: float | None = None, ttl: float = OUTPUT_TTL_SECONDS) -> int:
+    """Delete /api/generate output folders older than ttl seconds. Returns how many were removed."""
+    now = time.time() if now is None else now
+    removed = 0
+    for folder in OUTPUT.iterdir():
+        try:
+            if folder.is_dir() and now - folder.stat().st_mtime > ttl:
+                shutil.rmtree(folder)
+                removed += 1
+        except FileNotFoundError:
+            pass  # removed concurrently
+    return removed
+
+
+def blender_available() -> bool:
+    binary = os.environ.get('BLENDER_BIN')
+    return bool(binary) and shutil.which(binary) is not None
+
+
+@legacy.get('/api/health')
 def health():
-    return {'status': 'ok', 'modes': ['silhouette'], 'ai_enabled': False, 'blender_available': bool(os.environ.get('BLENDER_BIN'))}
+    return {'status': 'ok', 'modes': ['silhouette'], 'ai_enabled': False, 'blender_available': blender_available()}
 
-@app.post('/api/generate')
+@legacy.post('/api/generate')
 async def generate(image: UploadFile = File(...), depth: float = Form(0.25)):
     if not 0.02 <= depth <= 2:
         raise HTTPException(400, 'Depth must be between 0.02 and 2')
+    cleanup_outputs()
     raw = await image.read(12 * 1024 * 1024 + 1)
     if len(raw) > 12 * 1024 * 1024:
         raise HTTPException(413, 'Image too large (12 MB maximum)')
@@ -40,7 +76,7 @@ async def generate(image: UploadFile = File(...), depth: float = Form(0.25)):
         im.thumbnail((512, 512))
         rgba = im.convert('RGBA')
     except Exception:
-        raise HTTPException(400, 'Upload a valid PNG, JPG, or WEBP image')
+        raise HTTPException(400, 'Upload a valid PNG, JPG, or WEBP image') from None
     arr = np.asarray(rgba)
     alpha = arr[:, :, 3]
     # Prefer an alpha mask. Otherwise separate the object from the corner background color.
@@ -80,7 +116,7 @@ async def generate(image: UploadFile = File(...), depth: float = Form(0.25)):
     mesh.export(folder / 'model.ply')
     return {'id': identifier, 'preview': f'/api/files/{identifier}/model.glb', 'formats': ['glb','obj','stl','ply'], 'method': 'silhouette extrusion (not AI reconstruction)', 'faces': len(mesh.faces)}
 
-@app.get('/api/files/{identifier}/{filename}')
+@legacy.get('/api/files/{identifier}/{filename}')
 def download(identifier: str, filename: str):
     if len(identifier) != 32 or not all(c in '0123456789abcdef' for c in identifier):
         raise HTTPException(404)
@@ -90,3 +126,50 @@ def download(identifier: str, filename: str):
     if not path.is_file():
         raise HTTPException(404)
     return FileResponse(path, filename=filename if filename != 'model.glb' else '3d-maker.glb')
+
+
+
+log = logging.getLogger('maker')
+
+
+def _sweep(context: Context) -> None:
+    with context.db.connect() as conn:
+        for job_id, status in jobs.sweep(conn, context.settings):
+            log.info('job %s -> %s (sweeper)', job_id, status)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Applies queue expiry, heartbeat loss and the wall-clock limit even when nobody is polling."""
+    async def sweeper():
+        while True:
+            await asyncio.sleep(15)
+            try:
+                await run_in_threadpool(_sweep, app.state.ctx)
+            except Exception:  # noqa: BLE001 - keep the loop alive; the next tick retries
+                log.exception('sweeper failed')
+
+    task = asyncio.create_task(sweeper())
+    yield
+    task.cancel()
+
+
+def create_app(settings: Settings | None = None, context: Context | None = None) -> FastAPI:
+    app = FastAPI(title='3D Maker', version='0.2.0', lifespan=lifespan)
+    app.state.ctx = context or Context.create(settings or Settings.from_env())
+    app.add_exception_handler(ApiError, api_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.include_router(legacy)
+    app.include_router(uploads_api.router)
+    app.include_router(files_api.router)
+    app.include_router(gpu_api.router)
+    app.include_router(jobs_api.router)
+    app.include_router(models_api.router)
+    app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
+    # Serve the studio (index.html plus ./vendor and ./js modules) at the site root.
+    # Mounted last so every /api route registered above takes precedence.
+    app.mount('/', StaticFiles(directory=ROOT / 'static', html=True), name='site')
+    return app
+
+
+app = create_app()

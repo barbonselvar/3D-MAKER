@@ -5,8 +5,8 @@ V2 loadability Blender LTS imports it headless (three.js load is covered by the
                viewer/UI tests and the evaluation harness)
 V3 mesh sanity no NaN/inf, degenerate faces < 0.1 %, faces <= budget, largest
                component >= 90 % of surface area unless multi-object
-V4 materials   base colour (+ metallic-roughness for PBR engines) textures present
-               at the requested size, PNG/JPEG only (no WebP), UVs inside 0-1
+V4 materials   textures required by the engine's material profile present at the
+               requested size, PNG/JPEG only (no WebP), UVs inside 0-1
 
 The result decides which downloads are offered: a GLB is published only when
 every required gate passed.
@@ -30,6 +30,15 @@ from .glb import GlbError, buffer_view_bytes, read_accessor, read_glb
 
 HERE = Path(__file__).resolve().parent
 UV_EPS = 1e-4
+
+# Which textures each engine family must deliver (app/core/engines.py Engine.material).
+MATERIAL_PROFILES = {
+    # TRELLIS.2: base colour + packed metallic-roughness textures.
+    'pbr_textures': {'baseColorTexture': True, 'metallicRoughnessTexture': True},
+    # Stable Fast 3D: base colour + normal map textures; metallic/roughness are scalar factors upstream.
+    'basecolor_normal': {'baseColorTexture': True, 'normalTexture': True},
+    'basecolor': {'baseColorTexture': True},
+}
 
 
 @dataclass
@@ -153,7 +162,7 @@ def gate_v3(data: bytes, face_budget: int, multi_object: bool) -> Gate:
 
 # --- V4 ------------------------------------------------------------------------------------------
 
-def gate_v4(data: bytes, texture_size: int | None, require_pbr: bool) -> Gate:
+def gate_v4(data: bytes, texture_size: int | None, profile: str = 'pbr_textures') -> Gate:
     try:
         doc, binary = read_glb(data)
     except (GlbError, ValueError) as e:
@@ -177,19 +186,20 @@ def gate_v4(data: bytes, texture_size: int | None, require_pbr: bool) -> Gate:
         if texture_size and size != (texture_size, texture_size):
             problems.append(f'{role} texture is {size[0]}x{size[1]}, expected {texture_size}x{texture_size}')
 
+    required = MATERIAL_PROFILES[profile]
+    names = {'baseColorTexture': 'base colour', 'metallicRoughnessTexture': 'metallic-roughness', 'normalTexture': 'normal'}
     materials = doc.get('materials', [])
     if not materials:
         problems.append('no materials')
     for i, mat in enumerate(materials):
         pbr = mat.get('pbrMetallicRoughness', {})
-        if 'baseColorTexture' in pbr:
-            texture_info(pbr['baseColorTexture'], f'material {i} baseColor')
-        else:
-            problems.append(f'material {i} has no base colour texture')
-        if 'metallicRoughnessTexture' in pbr:
-            texture_info(pbr['metallicRoughnessTexture'], f'material {i} metallicRoughness')
-        elif require_pbr:
-            problems.append(f'material {i} has no metallic-roughness texture')
+        slots = {'baseColorTexture': pbr.get('baseColorTexture'), 'metallicRoughnessTexture': pbr.get('metallicRoughnessTexture'),
+                 'normalTexture': mat.get('normalTexture')}
+        for slot, ref in slots.items():
+            if ref is not None:
+                texture_info(ref, f'material {i} {names[slot]}')
+            elif required.get(slot):
+                problems.append(f'material {i} has no {names[slot]} texture')
 
     uv_range = [np.inf, -np.inf]
     for mesh in doc.get('meshes', []):
@@ -203,7 +213,7 @@ def gate_v4(data: bytes, texture_size: int | None, require_pbr: bool) -> Gate:
                 uv_range = [min(uv_range[0], float(uv.min())), max(uv_range[1], float(uv.max()))]
     if np.isfinite(uv_range[0]) and (uv_range[0] < -UV_EPS or uv_range[1] > 1 + UV_EPS):
         problems.append(f'UVs span {uv_range[0]:.3f}..{uv_range[1]:.3f}, outside 0-1')
-    details = {'materials': len(materials), 'textures': textures,
+    details = {'profile': profile, 'materials': len(materials), 'textures': textures,
                'uv_range': uv_range if np.isfinite(uv_range[0]) else None}
     return Gate('V4', 'Materials', 'failed' if problems else 'passed', '; '.join(problems), details)
 
@@ -211,7 +221,10 @@ def gate_v4(data: bytes, texture_size: int | None, require_pbr: bool) -> Gate:
 # --- entry point ---------------------------------------------------------------------------------
 
 def validate_glb(data: bytes, *, face_budget: int, texture_size: int | None = None, require_pbr: bool = True,
-                 multi_object: bool = False, blender: str | None = None, require_blender: bool | None = None) -> Report:
+                 multi_object: bool = False, blender: str | None = None, require_blender: bool | None = None,
+                 profile: str | None = None) -> Report:
+    """profile overrides require_pbr (True -> 'pbr_textures', False -> 'basecolor')."""
+    profile = profile or ('pbr_textures' if require_pbr else 'basecolor')
     blender = blender if blender is not None else os.environ.get('BLENDER_BIN')
     if require_blender is None:
         require_blender = os.environ.get('VALIDATION_REQUIRE_BLENDER') == '1'
@@ -220,7 +233,7 @@ def validate_glb(data: bytes, *, face_budget: int, texture_size: int | None = No
         path.write_bytes(data)
         v1 = gate_v1(path)
         v3 = gate_v3(data, face_budget, multi_object)
-        v4 = gate_v4(data, texture_size, require_pbr)
+        v4 = gate_v4(data, texture_size, profile)
         v2 = gate_v2(path, blender, v3.details.get('faces'), v4.details.get('materials'))
     required = ['V1', 'V3', 'V4'] + (['V2'] if require_blender else [])
     return Report([v1, v2, v3, v4], required)
@@ -233,9 +246,8 @@ if __name__ == '__main__':
     ap.add_argument('glb')
     ap.add_argument('--face-budget', type=int, default=200_000)
     ap.add_argument('--texture-size', type=int)
-    ap.add_argument('--no-pbr', action='store_true')
+    ap.add_argument('--profile', choices=sorted(MATERIAL_PROFILES), default='pbr_textures')
     a = ap.parse_args()
-    r = validate_glb(Path(a.glb).read_bytes(), face_budget=a.face_budget, texture_size=a.texture_size,
-                     require_pbr=not a.no_pbr)
+    r = validate_glb(Path(a.glb).read_bytes(), face_budget=a.face_budget, texture_size=a.texture_size, profile=a.profile)
     print(json.dumps(r.to_dict(), indent=2))
     raise SystemExit(0 if r.passed else 1)

@@ -31,6 +31,12 @@ log = logging.getLogger('maker.worker')
 WORKER_VERSION = '0.2.0'
 
 
+def material_profile(engine: Engine) -> str:
+    """Gate V4 profile from the catalogue; engines outside it fall back to their textured flag."""
+    catalogue = ENGINES.get(engine.id)
+    return catalogue.material if catalogue else ('pbr_textures' if engine.textured else 'basecolor')
+
+
 class JobGone(Exception):
     """The job was cancelled or reassigned server-side."""
 
@@ -165,7 +171,7 @@ class Worker:
             result = engine.run(image, params, reporter)
             reporter.stage('validating', 'validate', 0.9)
             report = self.validator(result.glb, face_budget=params['face_budget'], texture_size=params['texture_size'],
-                                    require_pbr=engine.textured)
+                                    profile=material_profile(engine))
             if not report.passed:
                 summary = '; '.join(f'{g.id} {g.message or g.status}' for g in report.failures())
                 raise EngineError('VALIDATION_FAILED', f'The generated model failed validation: {summary}', retryable=True)
@@ -238,7 +244,7 @@ def smoke(engines: dict[str, Engine], probe: dict, image_path: str, out_dir: str
         started = time.monotonic()
         result = engine.run(Image.open(BytesIO(data)), params, _PrintReporter())
         report = validate_glb(result.glb, face_budget=params['face_budget'], texture_size=params['texture_size'],
-                              require_pbr=engine.textured)
+                              profile=material_profile(engine))
         job = {'id': 'smoke', 'params': params, 'input': {'sha256': hashlib.sha256(data).hexdigest()}}
         manifest = Worker(None, engines, probe).manifest(job, engine, result, report, {}, time.monotonic() - started)
         (out / f'{engine.id}.glb').write_bytes(result.glb)

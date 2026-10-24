@@ -106,6 +106,8 @@ def crafted_fixtures() -> dict[str, bytes]:
     good = build_glb(v, f, uv, pbr)
     return {
         'pbr_cube.glb': good,
+        'sf3d_style_512.glb': sf3d_style(512),
+        'sf3d_style_1024.glb': sf3d_style(1024),
         'pbr_cube_2048.glb': build_glb(v, f, uv, {'baseColorTexture': png(2048), 'metallicRoughnessTexture': png(2048, (0, 128, 255))}),
         'bad_nan.glb': build_glb(nan_v, f, uv, pbr),
         'bad_uv_range.glb': build_glb(v, f, uv * 1.5, pbr),
@@ -115,6 +117,24 @@ def crafted_fixtures() -> dict[str, bytes]:
         'bad_degenerate.glb': build_glb(deg_v, deg_f, deg_uv, pbr),
         'bad_untextured.glb': build_glb(v, f, uv, None),
     }
+
+
+def sf3d_style(size=512) -> bytes:
+    """Mimics how Stable Fast 3D (sf3d/system.py) assembles its output: trimesh PBRMaterial with a JPEG base
+    colour texture, a JPEG normal map, scalar roughness/metallic, exported with include_normals=True.
+    Geometry is a plain UV sphere: this is a format fixture, not model output."""
+    sphere = trimesh.creation.uv_sphere(radius=0.5, count=[32, 32])
+    v = sphere.vertices
+    uv = np.stack([0.5 + np.arctan2(v[:, 1], v[:, 0]) / (2 * np.pi), 0.5 + np.arcsin(np.clip(v[:, 2] / 0.5, -1, 1)) / np.pi], 1)
+    base = Image.fromarray(np.full((size, size, 3), (180, 60, 40), np.uint8))
+    base.format = 'JPEG'
+    normal = Image.fromarray(np.full((size, size, 3), (128, 128, 255), np.uint8))
+    normal.format = 'JPEG'
+    material = trimesh.visual.material.PBRMaterial(baseColorTexture=base, roughnessFactor=0.6, metallicFactor=0.1,
+                                                   normalTexture=normal)
+    mesh = trimesh.Trimesh(vertices=v, faces=sphere.faces,
+                           visual=trimesh.visual.texture.TextureVisuals(uv=np.clip(uv, 0, 1), material=material))
+    return mesh.export(file_type='glb', include_normals=True)
 
 
 def smoke_subject() -> bytes:

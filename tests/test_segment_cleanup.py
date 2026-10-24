@@ -93,3 +93,10 @@ def test_cleanup_keeps_large_parts_and_unwelded_islands():
     assert postprocess.cleanup(two_cubes)[1]['removed_components'] == 0
     cube = load('pbr_cube.glb')  # 12 unwelded faces = 1 part, not 12 specks
     assert postprocess.cleanup(cube)[1] == {'removed_components': 0, 'removed_faces': 0, 'components_kept': 1}
+
+
+def test_rembg_cpu_segmenter_selection():
+    spec = segment.choose('rembg-u2net')
+    assert spec.commercial is True and 'Apache-2.0' in spec.licence
+    assert isinstance(segment.make_segmenter(spec), segment.RembgSegmenter)
+    assert isinstance(segment.make_segmenter(segment.choose('birefnet')), segment.BiRefNetSegmenter)

@@ -104,3 +104,21 @@ def test_v2_required_when_configured(monkeypatch):
 def test_v2_real_blender():
     report = run('pbr_cube.glb', blender=os.environ['BLENDER_BIN'], require_blender=True)
     assert gates(report)['V2'].status == 'passed', report.to_dict()
+
+
+def test_sf3d_style_output_passes_basecolor_normal_profile():
+    report = run('sf3d_style_512.glb', texture_size=512, profile='basecolor_normal')
+    assert report.passed, report.to_dict()
+    textures = {t['role']: t for t in gates(report)['V4'].details['textures']}
+    assert textures['material 0 base colour']['mime'] == 'image/jpeg'
+    assert textures['material 0 normal']['size'] == [512, 512]
+
+
+def test_sf3d_style_output_fails_trellis_profile():
+    g = gates(run('sf3d_style_512.glb', texture_size=512, profile='pbr_textures'))['V4']
+    assert g.status == 'failed' and 'no metallic-roughness texture' in g.message
+
+
+def test_basecolor_normal_profile_requires_normal_map():
+    g = gates(run('pbr_cube.glb', profile='basecolor_normal'))['V4']
+    assert g.status == 'failed' and 'no normal texture' in g.message

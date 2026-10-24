@@ -30,6 +30,9 @@ SEGMENTERS = {
                               'BiRefNet general weights: licence NOT VERIFIED by this project (code is MIT); '
                               'confirm on the model card before commercial use', None),
     'rmbg-2.0': SegmenterSpec('rmbg-2.0', 'briaai/RMBG-2.0', 'CC BY-NC 4.0 (non-commercial only)', False),
+    # CPU-only (onnxruntime): keeps the whole GPU for the 3D model on small cards. SF3D's own default.
+    'rembg-u2net': SegmenterSpec('rembg-u2net', 'u2net (rembg)',
+                                 'rembg library MIT; U^2-Net weights Apache-2.0 (github.com/xuebinqin/U-2-Net)', True),
 }
 
 
@@ -72,6 +75,29 @@ class BiRefNetSegmenter:
         with torch.no_grad():
             pred = self.model(batch)[-1].sigmoid().cpu()[0].squeeze()
         return transforms.ToPILImage()(pred).resize(rgb.size)
+
+
+class RembgSegmenter:
+    """U^2-Net through rembg on the CPU (onnxruntime CPUExecutionProvider): uses no GPU memory."""
+
+    def __init__(self, spec: SegmenterSpec | None = None):
+        self.spec, self.session = spec or SEGMENTERS['rembg-u2net'], None
+        self.revision = 'rembg u2net.onnx md5:60024c5c889badc19c04ad937298a77b (checked by rembg on download)'
+
+    def load(self) -> RembgSegmenter:
+        import rembg  # noqa: PLC0415 - worker-only dependency
+
+        self.session = rembg.new_session('u2net', providers=['CPUExecutionProvider'])
+        return self
+
+    def mask(self, rgb: Image.Image) -> Image.Image:
+        import rembg  # noqa: PLC0415
+
+        return rembg.remove(rgb, session=self.session, only_mask=True).convert('L')
+
+
+def make_segmenter(spec: SegmenterSpec):
+    return RembgSegmenter(spec) if spec.name == 'rembg-u2net' else BiRefNetSegmenter(spec)
 
 
 def has_real_alpha(image: Image.Image) -> bool:

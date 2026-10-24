@@ -154,9 +154,9 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, context: Context | None = None) -> FastAPI:
     app = FastAPI(title='3D Maker', version='0.2.0', lifespan=lifespan)
-    app.state.ctx = Context.create(settings or Settings.from_env())
+    app.state.ctx = context or Context.create(settings or Settings.from_env())
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.include_router(legacy)

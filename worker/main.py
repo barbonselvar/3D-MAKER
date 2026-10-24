@@ -375,12 +375,25 @@ def main() -> None:
         worker.run_selftests(force=True)
         print(json.dumps({k: v['selftest'] for k, v in reports.items()}, indent=2))
         raise SystemExit(0 if worker.ready_engine_ids else 1)
-    http = httpx.Client(base_url=os.environ['MAKER_INTERNAL_URL'], timeout=120,
-                        headers={'Authorization': f"Bearer {os.environ['MAKER_WORKER_TOKEN']}"})
-    worker = Worker(ApiClient(http), engines, caps, reports=reports)
+    serve(os.environ['MAKER_INTERNAL_URL'], os.environ['MAKER_WORKER_TOKEN'], caps=caps, prepared=(engines, reports))
+
+
+def serve(internal_url: str, token: str, engine_ids: list[str] | None = None, caps: dict | None = None,
+          classes: dict | None = None, prepared: tuple | None = None, stop: threading.Event | None = None,
+          heartbeat_interval: float = 15, poll_interval: float = 3) -> Worker:
+    """Connect to the worker API, self-test the engines (staying visible meanwhile), then process jobs until stop."""
+    if caps is None:
+        from .gpu_probe import probe  # noqa: PLC0415
+
+        caps = probe()
+    engines, reports = prepared or prepare_engines(engine_ids or [], classes)
+    http = httpx.Client(base_url=internal_url, timeout=120, headers={'Authorization': f'Bearer {token}'})
+    worker = Worker(ApiClient(http), engines, caps, reports=reports, heartbeat_interval=heartbeat_interval,
+                    poll_interval=poll_interval)
     with worker.background_heartbeat():  # the UI shows "Not tested yet" while self-tests run
         worker.run_selftests()
-    worker.run_forever()
+    worker.run_forever(stop)
+    return worker
 
 
 if __name__ == '__main__':
